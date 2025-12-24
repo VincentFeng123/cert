@@ -1,0 +1,139 @@
+App.tsx (Main Traffic Controller)
+---------------------------------
+Think of App.tsx as the traffic interchange for the whole site. It does three things:
+
+1. Imports the map from `react-router-dom` so the app understands URLs like "/" or "/cpr" and the components that should appear there (Home, Modules, CPRTraining, HeimlichTraining, Achievements, plus the Header).
+2. Inside `AppContent()` it peeks at the current location (`useLocation()`). On routes where a header should be shown (`/`, `/modules`, `/achievements`) it shows the Header. Then it sets up a table of routes so the browser knows exactly which screen to display for each URL.
+3. `App()` wraps `AppContent` inside `<Router>`. The Router is the navigator that listens for URL changes and asks `AppContent` to update the visible page.
+
+So App.tsx itself doesn’t display much—it tells the rest of the app which page component to load and whether the Header should be visible.
+
+main.tsx (Switching the Lights On)
+----------------------------------
+`main.tsx` is the electrician that boots everything:
+
+• It imports global CSS (index.css) and the 3rd-party scrollbar styling so every page can use the same look.
+• Finds the empty `<div id="root">` in index.html.
+• Uses `createRoot(...).render()` to mount `<App />` into that div, wrapping it in `React.StrictMode` for extra safety checks during development.
+
+After main.tsx runs, the React app is alive inside your browser.
+
+index.css (The Style Rulebook)
+------------------------------
+`index.css` is the shared wardrobe for the whole project:
+
+• The first lines bring in Tailwind base/components/utilities. That means you can use Tailwind utility classes everywhere.
+• CSS variables in `:root` define project-wide colors, shadows, and spacing tokens.
+• It customizes scrollbars for Chrome/Firefox, so they’re slim and slate-colored.
+• Sets base typography for the entire `<body>` (font family, smoothing, background color).
+• Includes many reusable utility classes via Tailwind’s `@apply`, e.g., `.btn-primary`, `.card`, `.banner-box`, etc., so you can style buttons and cards consistently across files.
+• Near the end it defines classes and keyframe animations specific to the floating “AI Training Assistant,” badge toasts, dropdowns, etc.
+
+Because `index.css` is imported once in `main.tsx`, every React component automatically inherits these styles.
+
+App.css (Legacy Starter Styles)
+-------------------------------
+`App.css` comes from the default Vite + React template. It sets a max width on `#root` and contains demo classes for a spinning React logo (`.logo`, `@keyframes logo-spin`) and a `.card` helper. The current project relies on Tailwind utilities instead, so these rules aren’t used anymore—they’re simply leftovers from the starter boilerplate.
+
+Summary
+-------
+• `App.tsx` is the routing hub: it shows the right page for each URL and toggles the Header.
+• `main.tsx` is the entry point that bootstraps React into the browser.
+• `index.css` is the global style kit—colors, fonts, buttons, scrollbars, animations.
+• `App.css` is legacy styling from the starter template (kept for reference, not actively used).
+
+Achievements.tsx (Badge Cabinet)
+---------------------------------
+Purpose: Show the learner every badge they have earned (and what still needs work) by reading their saved progress from the browser.
+
+1. Pulling saved progress
+   • When the page loads, it reads two items from localStorage: one for CPR progress, one for the Heimlich module.
+   • Helper `parseStoredJson` safely converts the stored text back into JavaScript objects. If the data is missing or broken, it quietly returns null.
+
+2. Calculating badge status
+   • Inside a `useMemo` block (think “only recalc when progress changes”), the code builds one master list of badges. Each badge knows:
+     – Its name (“CPR Certified”, “Quiz Champion”, etc.).
+     – A one-line description.
+     – Which module it belongs to (overall, CPR, or Heimlich).
+     – Whether the learner has earned it yet, based on the stored progress (quiz scores, completed steps, enabled reminders, etc.).
+   • The list is then split into “earned” and “upcoming” groups for each module tab so the UI can show a proud “earned” section and a faded “locked” section.
+
+3. Rendering the cabinet
+   • A simple helper `renderBadgeSection` prints the badge groups: awarded badges sit in a grid, locked badges appear with a padlock icon.
+   • At the top the page shows a quick summary of total earned vs total available.
+
+Overall, this file is a big “read saved data → convert it into badge lists → show it nicely” pipeline.
+
+Home.tsx (Hero Welcome Banner)
+------------------------------
+Purpose: Provide a single fullscreen welcome banner with two big buttons.
+
+• It uses the router’s `<Link>` component so the buttons navigate without reloading the page.
+• The entire screen is a grey backdrop with a centered “Save Lives with Confidence” hero message.
+• The section uses Tailwind utility classes (e.g., `bg-white/30`, `rounded-2xl`) to get a frosted-glass look.
+• Both buttons (“Explore Training Modules” and “View Achievements”) scroll to the top after navigation so the new page starts at the proper place.
+
+This file is intentionally simple—just text, a background photo, and navigation links.
+
+Modules.tsx (Course Selector)
+-----------------------------
+Purpose: Give the learner a dashboard of all available modules, along with their progress for CPR and Heimlich.
+
+1. Reading local progress
+   • On mount, it pulls CPR and Heimlich progress from localStorage.
+   • Helper `getCprStatus` and `getHeimlichStatus` translate that raw data into a friendly status card (e.g., “Continue module” vs “Restart module”).
+
+2. Rendering the module cards
+   • Each card shows an icon, title, short description, and a button.
+   • CPR and Heimlich buttons use the status from step 1 (and reset stored progress if the learner chooses “Restart”).
+   • Placeholder cards (“Gun Violence Response”, “Domestic Violence Awareness”) just link to `#` but set the visual foundation for future lessons.
+
+Tailwind classes supply the layout (two-column grid, hover transitions). No complicated state—just read storage and adjust the text.
+
+HeimlichTraining.tsx (Four-Step Lesson)
+--------------------------------------
+Purpose: Walk the learner through video → key points → quiz → practice for the Heimlich maneuver while remembering their place.
+
+• State overview: `currentStep`, quiz score/results, plus `useEffect` hooks that load/save progress to localStorage so leaving the page doesn’t lose their place.
+• Badges: A helper list determines which Heimlich-specific badges are earned; small badge chips show progress under the title.
+• Step-by-step rendering: `renderStepContent()` chooses the current panel.
+  – Video: shows a placeholder player with a caution banner.
+  – Knowledge: reveals key bullet points with large icons.
+  – Quiz: single-question multiple choice, storing result in state.
+  – Practice: simple encouragement message (this module doesn’t embed a 3D sim like CPR).
+• Navigation buttons let the learner move forward/back through the steps, and state changes trigger localStorage updates so reloading returns to the same step.
+
+In short: HeimlichTraining.tsx is a guided, persistent lesson with simple quiz logic and badge awareness.
+
+CPRTraining.tsx (Feature-Rich Training Hub)
+------------------------------------------
+This is the biggest file—it manages the entire CPR journey: video, knowledge, quiz, 3D practice, badges, notifications, local storage, and chatbot sidebars. Here’s a tour:
+
+1. Giant state toolbox
+   • Scores of `useState` hooks track everything: which step you are on, quiz answers, bookmark settings, reminder toggle, simulation metrics (compression rate, counts), badge notifications, daily challenges, etc.
+   • On mount it loads previous progress from localStorage (current step, quiz state, simulation data) so learners can leave and resume later.
+   • A matching `useEffect` saves progress back to storage whenever those key pieces change.
+
+2. Badge system & toasts
+   • `cprBadgeGroups` groups earned vs upcoming badges based on current progress.
+   • Another effect fires badge “toast” notifications the first time a badge is earned, auto-hiding them after a few seconds.
+
+3. Step rendering
+   • `renderStepContent()` chooses between four main experiences:
+     – Video: embedded YouTube tutorial.
+     – Knowledge: either a rich study guide or flashcards, depending on the learner’s selected study mode.
+     – Quiz: multi-question quiz with feedback, score tracking, review analysis, and daily challenge info.
+     – Practice: hosts the interactive 3D CPR simulation component plus coaching feedback.
+
+4. 3D practice sidebar (SimulationInstructions)
+   • Shows context-sensitive instructions, e.g., a progress bar requiring you to pan around the scene for 3 seconds, or buttons to retry compressions.
+
+5. Layout & navigation
+   • The page is split into a main content column and a sidebar (badges, chatbot instructions).
+   • Navigation buttons at the bottom move between steps, while the top bar shows current progress.
+
+6. Chatbot integration
+   • `SimpleChatbot` is embedded on the side, receiving contextual props so the bot knows which step the learner sees.
+
+All this makes CPRTraining.tsx the “control center” for the CPR module—managing persistence, practice logic, quizzes, badges, and supportive UI components.
+
