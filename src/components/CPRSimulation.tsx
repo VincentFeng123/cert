@@ -368,7 +368,7 @@ function CPRDummy({
 
 
 function CameraController({ currentStep }: { currentStep: number }) {
-  const { camera, gl } = useThree()
+  const { camera } = useThree()
   const controlsRef = useRef<OrbitControlsImpl | null>(null)
   const previousStepRef = useRef(currentStep)
 
