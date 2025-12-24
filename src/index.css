@@ -18,39 +18,50 @@
     --spacing-section: clamp(3rem, 5vw, 6rem);
   }
 
-  /* Global scrollbar styles - slim 4px dark gray with no track */
+  /* Global scrollbar styles - always visible, slim 4px dark gray */
   ::-webkit-scrollbar {
     -webkit-appearance: none;
-    width: 4px;
-    height: 4px;
+    width: 6px;
+    height: 6px;
   }
 
   ::-webkit-scrollbar-track {
-    background: transparent;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb {
     background: #374151;
-    border-radius: 2px;
+    border-radius: 3px;
+    min-height: 30px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
     background: #1f2937;
   }
 
+  /* Force scrollbar visibility on all scrollable elements */
+  html {
+    overflow-y: scroll;
+  }
+
   /* Firefox scrollbar */
   * {
     scrollbar-width: thin;
-    scrollbar-color: #374151 transparent;
+    scrollbar-color: #374151 rgba(0, 0, 0, 0.05);
   }
 
-  /* Simplebar custom styling */
+  /* Simplebar custom styling - always visible */
   .simplebar-scrollbar::before {
     background: #374151;
-    border-radius: 2px;
+    border-radius: 3px;
     left: 0;
     right: 0;
-    opacity: 1;
+    opacity: 1 !important;
+  }
+
+  .simplebar-scrollbar.simplebar-visible::before {
+    opacity: 1 !important;
   }
 
   .simplebar-scrollbar.simplebar-hover::before,
@@ -59,16 +70,23 @@
   }
 
   .simplebar-track {
-    background: transparent;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 3px;
   }
 
   .simplebar-track.simplebar-vertical {
-    width: 4px;
+    width: 6px;
     right: 0;
   }
 
   .simplebar-track.simplebar-horizontal {
-    height: 4px;
+    height: 6px;
+  }
+
+  /* Keep simplebar scrollbar always visible */
+  .simplebar-track .simplebar-scrollbar {
+    opacity: 1 !important;
+    visibility: visible !important;
   }
 }
 
@@ -419,21 +437,20 @@ canvas {
   flex-shrink: 0;
 }
 
-/* Custom scrollbar for WebKit browsers */
+/* Custom scrollbar for chatbot - always visible */
 .chatbot-messages::-webkit-scrollbar {
   width: 6px;
 }
 
 .chatbot-messages::-webkit-scrollbar-track {
-  background: transparent;
-  border: none;
-  box-shadow: none;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 3px;
 }
 
 .chatbot-messages::-webkit-scrollbar-thumb {
   background: #374151;
   border-radius: 3px;
-  border: none;
+  min-height: 30px;
 }
 
 .chatbot-messages::-webkit-scrollbar-thumb:hover {
@@ -442,6 +459,10 @@ canvas {
 
 .chatbot-messages::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+.chatbot-messages {
+  overflow-y: scroll !important;
 }
 
 /* Custom select dropdown styling */
