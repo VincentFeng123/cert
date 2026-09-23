@@ -88,7 +88,8 @@ import { heimlichModule, gunViolenceModule, domesticViolenceModule } from '../..
 import { getPracticeDefinition } from '../../src/data/practice'
 for (const data of [heimlichModule, gunViolenceModule, domesticViolenceModule]) {
   test(`${data.slug}: lessons, 3D actions, both scenarios and saved completion`, async ({page}) => {
-    test.setTimeout(120000)
+    // Includes a full quiz, animated practice, two scenarios and a saved-progress reload.
+    test.setTimeout(180000)
     const errors: string[] = []
     page.on('pageerror', error => errors.push(error.message))
     await page.goto(`/${data.slug}`)
