@@ -1,37 +1,15 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faArrowLeft } from '@fortawesome/free-solid-svg-icons'
 
-type BackButtonProps = {
-  elevation?: 'overlay' | 'baseline'
-}
+type BackButtonProps = { elevation?: 'overlay' | 'baseline' }
 
-const BackButton = ({ elevation = 'overlay' }: BackButtonProps) => {
-  const navigate = useNavigate()
-
-  const handleBackClick = (e: React.MouseEvent) => {
-    e.preventDefault()
-    navigate('/')
-    // Small delay to ensure navigation completes, then scroll to top
-    setTimeout(() => {
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    }, 100)
-  }
-
-  const wrapperZIndex = elevation === 'overlay' ? 2147483647 : 10
-
-  return (
-    <div className="sticky top-0 pt-16 pl-16 pointer-events-none" style={{ zIndex: wrapperZIndex }}>
-      <Link
-        to="/"
-        onClick={handleBackClick}
-        className="pointer-events-auto inline-flex items-center justify-center px-4 py-4 bg-white/90 backdrop-blur-sm rounded-lg border border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-white hover:border-slate-600 transition-all duration-300"
-        style={{ position: 'relative', zIndex: wrapperZIndex }}
-      >
-        <FontAwesomeIcon icon={faArrowLeft} className="text-sm" />
-      </Link>
-    </div>
-  )
-}
+const BackButton = ({ elevation = 'overlay' }: BackButtonProps) => (
+  <div className="relative px-4 pt-5 sm:px-8 sm:pt-8 lg:px-12" style={{ zIndex: elevation === 'overlay' ? 30 : 10 }}>
+    <Link to="/modules" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-slate-600">
+      <FontAwesomeIcon icon={faArrowLeft} className="text-xs" /> All modules
+    </Link>
+  </div>
+)
 
 export default BackButton

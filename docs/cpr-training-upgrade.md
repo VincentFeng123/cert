@@ -97,3 +97,13 @@
 ---
 **Owners**: 3D Artist, Technical Artist, Frontend Engineer, Product Designer  
 **Latest Update**: Telemetry scaffolding underway; asset commissions queued post-approval.
+
+## Implemented update — September 2026
+
+The earlier roadmap above is historical planning, not a description of the current viewer.
+
+The practice scene now uses a purpose-built procedural training mannequin with a shaped torso, localized chest deformation, stacked responder gloves, studio lighting, and floor shadows. It does not require the old GLB assets or external model downloads. The viewer includes constrained orbit, overhead and reset controls, mouse/touch input, and keyboard-accessible practice buttons. A 2D mannequin preserves the practice controls if WebGL fails.
+
+Practice consists of scene preparation, hand positioning, and a 30-tap rhythm round. A round passes at a 100–120 BPM overall average with at least 80% of tap intervals in range. The entire round is scored; rapid early clicks cannot be hidden by a few well-timed final taps. This is an app practice target, not a clinical assessment. No depth, force, recoil, ventilation, or live patient status is measured. The page and achievement text reflect those limits.
+
+Quiz evidence and successful practice are required for module completion. Saved state is validated; unfinished timed rounds restart after reload, and fullscreen uses the same mounted simulation. Pure scoring and persistence tests plus local browser tests cover the key transitions. Photorealistic rigging, physical sensor feedback, XR, and certification remain outside this release.

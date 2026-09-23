@@ -530,3 +530,23 @@ select:focus option:checked {
 .animate-slideDown {
   animation: slideDown 0.3s ease-out;
 }
+
+/* Shared interaction and narrow-screen foundations for every learning module. */
+button:disabled { cursor: not-allowed; opacity: .45; }
+:where(a, button, input, select, textarea):focus-visible { outline: 3px solid #64748b; outline-offset: 3px; }
+.training-page .btn-primary, .training-page .btn-secondary { padding: .8rem 1.2rem; border-radius: .75rem; }
+.training-page .image-box, .training-page .banner-box { padding: clamp(1rem, 3vw, 2rem); }
+@media (max-width: 640px) {
+  .container { padding-left: 1rem; padding-right: 1rem; }
+  .training-page h2.text-4xl { font-size: 1.65rem; }
+  .training-page .badge-toast-container { max-width: calc(100vw - 2rem); right: 1rem; }
+  .training-page .fixed.w-80 { width: min(20rem, calc(100vw - 2rem)); right: 1rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+.training-back > div { padding: 0; }
+
+.training-back > div > a { border: 0; background: transparent; padding: 0; box-shadow: none; }
+.training-option:disabled, .training-page button[aria-pressed]:disabled { opacity: 1; }

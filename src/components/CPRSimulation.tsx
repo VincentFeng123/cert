@@ -1,8 +1,12 @@
-import { useRef, useState, useEffect, useCallback, useMemo, type CSSProperties } from 'react'
+import { Component, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { OrbitControls, useGLTF } from '@react-three/drei'
+import { OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
+import TrainingMannequin from './cpr/TrainingMannequin'
+import FlatMannequin from './cpr/FlatMannequin'
+import { CPR_SIMULATION_STEPS } from '../lib/cpr-steps'
+import { assessCompressionRhythm, COMPRESSION_TARGET_COUNT, getLiveCompressionRate } from '../lib/cpr-rhythm'
 
 interface CPRSimulationProps {
   onStepComplete: (step: number) => void
@@ -23,492 +27,328 @@ interface CPRSimulationProps {
   isFullscreen?: boolean
 }
 
-// CPR simulation steps
-export const CPR_SIMULATION_STEPS = [
-  {
-    id: 0,
-    title: "Scene Safety",
-    instruction: "Look around the scene to check for hazards. Use your mouse to pan 360 degrees and assess safety.",
-    cameraPosition: [0, 5, 8],
-    cameraTarget: [0, 0, 0],
-    completionMethod: "Look around for 3 seconds, then click Continue"
-  },
-  {
-    id: 1,
-    title: "Hand Placement",
-    instruction: "Click on the green target to place your hands on the center of the chest (lower sternum)",
-    cameraPosition: [0, 2.5, 3],
-    cameraTarget: [0, 1.2, 0],
-    completionMethod: "Click the green target on the chest"
-  },
-  {
-    id: 2,
-    title: "Chest Compressions",
-    instruction: "Compress 5-6cm deep at 100-120 compressions per minute",
-    cameraPosition: [0, 2.5, 3],
-    cameraTarget: [0, 1.2, 0],
-    requiredCompressions: 30,
-    minBPM: 100,
-    maxBPM: 120,
-    completionMethod: "Perform 30 compressions at 100-120 BPM by clicking the green target"
-  }
-]
-
-const DUMMY_WORLD_POSITION = new THREE.Vector3(0, 6, 0)
-const DUMMY_SCALE = 1
-const DUMMY_ROTATION = new THREE.Euler(0, 0, 0)
-
-function CPRDummy({ 
-  currentStep, 
-  onStepComplete, 
-  setSceneViewTime, 
-  setHandsPlaced,
-  compressionCount,
-  setCompressionCount,
-  setCompressionRate,
-  compressionFailed,
-  setCompressionFailed,
-  compressionTimes,
-  setCompressionTimes,
-  onFeedback
-}: { 
-  currentStep: number, 
-  onStepComplete: (step: number) => void,
-  setSceneViewTime: (value: number | ((prev: number) => number)) => void,
-  setHandsPlaced: (value: boolean) => void,
-  compressionCount: number,
-  setCompressionCount: (value: number) => void,
-  setCompressionRate: (value: number) => void,
-  compressionFailed: boolean,
-  setCompressionFailed: (value: boolean) => void,
-  compressionTimes: number[],
-  setCompressionTimes: (value: number[]) => void,
-  onFeedback?: (message: string) => void
-}) {
-  const meshRef = useRef<THREE.Group>(null)
-  const [isCompressing, setIsCompressing] = useState(false)
-  const lastFeedbackTimeRef = useRef(0)
-  const [chestPosition, setChestPosition] = useState(0)
-  const currentBPMRef = useRef(0)
-  const displayedBpmRef = useRef(0)
-  const lastPublishedRateRef = useRef(0)
-  const rateUpdateTimerRef = useRef(0)
-  const compressionStepConfig = CPR_SIMULATION_STEPS[2]
-
-  const computeBpmFromTimes = useCallback((times: number[], now: number) => {
-    if (!times.length) return 0
-
-    const lastTap = times[times.length - 1]
-    const timeSinceLastTap = Math.max((now - lastTap) / 1000, 0.05)
-
-    if (timeSinceLastTap > 6) {
-      return 0
-    }
-
-    if (times.length === 1) {
-      return 0
-    }
-
-    const startIndex = Math.max(0, times.length - 6)
-    const intervals: number[] = []
-
-    for (let i = startIndex + 1; i < times.length; i++) {
-      intervals.push((times[i] - times[i - 1]) / 1000)
-    }
-
-    if (!intervals.length) {
-      const bpm = 60 / timeSinceLastTap
-      return Number.isFinite(bpm) ? Math.min(Math.max(bpm, 0), 200) : 0
-    }
-
-    const avgInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length
-    const effectiveInterval = Math.max(avgInterval, timeSinceLastTap)
-    const bpm = 60 / effectiveInterval
-
-    if (!Number.isFinite(bpm)) {
-      return 0
-    }
-
-    return Math.min(Math.max(bpm, 0), 200)
-  }, [])
-
-  useEffect(() => {
-    lastFeedbackTimeRef.current = 0
-  }, [currentStep])
-  
-  // load the GLB model
-  const { scene: modelScene } = useGLTF('/models/basic_human_mesh.glb', true) || { scene: null }
-
-  const modelBaseOffset = useMemo(() => {
-    if (!modelScene) return 0
-    const clone = modelScene.clone()
-    const box = new THREE.Box3().setFromObject(clone)
-    const minY = box.min.y
-    const height = box.max.y - box.min.y
-    return minY + height * 0.5
-  }, [modelScene])
-
-  useFrame((state) => {
-    if (meshRef.current) {
-      const breathingOffset = currentStep !== 2 ? Math.sin(state.clock.elapsedTime * 0.5) * 0.02 : 0
-      const baseY = DUMMY_WORLD_POSITION.y + chestPosition + breathingOffset
-      meshRef.current.position.set(DUMMY_WORLD_POSITION.x, baseY, DUMMY_WORLD_POSITION.z)
-      meshRef.current.rotation.set(DUMMY_ROTATION.x, DUMMY_ROTATION.y, DUMMY_ROTATION.z)
-    }
-  })
-
-  // Reset compression data when moving to compression step
-  useEffect(() => {
-    if (currentStep === 2) {
-      setCompressionTimes([])
-      setCompressionRate(0)
-      setCompressionFailed(false)
-      currentBPMRef.current = 0
-      displayedBpmRef.current = 0
-      lastPublishedRateRef.current = 0
-      rateUpdateTimerRef.current = 0
-    }
-  }, [currentStep, setCompressionRate, setCompressionFailed, setCompressionTimes])
-
-  // BPM tracking
-  useFrame((_, delta) => {
-    if (currentStep === 0) {
-      setSceneViewTime((prev) => {
-        const next = prev + delta
-        return next >= 3 ? 3 : next
-      })
-    }
-
-    if (currentStep === 2) {
-      const now = Date.now()
-      const bpm = computeBpmFromTimes(compressionTimes, now)
-      currentBPMRef.current = bpm
-
-      rateUpdateTimerRef.current += delta
-      const UPDATE_INTERVAL = 0.2
-      const MAX_STEP = 8 // BPM change per update
-
-      if (rateUpdateTimerRef.current >= UPDATE_INTERVAL) {
-        rateUpdateTimerRef.current = 0
-
-        const currentDisplay = displayedBpmRef.current
-        const diff = bpm - currentDisplay
-        const step = Math.abs(diff) > MAX_STEP ? Math.sign(diff) * MAX_STEP : diff
-        const nextDisplay = currentDisplay + step
-        displayedBpmRef.current = nextDisplay
-
-        if (Math.abs(nextDisplay - lastPublishedRateRef.current) >= 0.5 || (nextDisplay === 0 && lastPublishedRateRef.current !== 0)) {
-          lastPublishedRateRef.current = nextDisplay
-          setCompressionRate(nextDisplay)
-        }
-      }
-
-      if (onFeedback && bpm > 0) {
-        if (now - lastFeedbackTimeRef.current > 1500) {
-          if (bpm < 95) {
-            onFeedback('Speed up a little—target 100-120 compressions per minute.')
-            lastFeedbackTimeRef.current = now
-          } else if (bpm > 125) {
-            onFeedback('Slow down slightly to stay near 100-120 compressions per minute.')
-            lastFeedbackTimeRef.current = now
-          } else if (compressionCount >= 20 && bpm >= 100 && bpm <= 120) {
-            onFeedback('Great cadence! Keep your shoulders stacked to maintain depth.')
-            lastFeedbackTimeRef.current = now
-          }
-        }
-      }
-    } else if (lastPublishedRateRef.current !== 0) {
-      displayedBpmRef.current = 0
-      lastPublishedRateRef.current = 0
-      currentBPMRef.current = 0
-      rateUpdateTimerRef.current = 0
-      setCompressionRate(0)
-    }
-  })
-
-  useEffect(() => {
-    if (currentStep !== 0) {
-      setSceneViewTime(0)
-    }
-  }, [currentStep, setSceneViewTime])
-
-
-
-  const handleChestClick = () => {
-    // Hand placement step
-    if (currentStep === 1) {
-      setHandsPlaced(true)
-      onStepComplete(currentStep)
-      if (onFeedback) {
-        onFeedback('Hand placement locked in—keep elbows straight and shoulders stacked over the chest.')
-        lastFeedbackTimeRef.current = Date.now()
-      }
-      return
-    }
-
-    // Compression step
-    if (currentStep === 2 && !isCompressing && !compressionFailed) {
-      setIsCompressing(true)
-      const now = Date.now()
-      const updatedTimes = [...compressionTimes, now]
-      setCompressionTimes(updatedTimes)
-      const newCount = compressionCount + 1
-      setCompressionCount(newCount)
-
-      const instantBpm = computeBpmFromTimes(updatedTimes, now)
-      currentBPMRef.current = instantBpm
-      displayedBpmRef.current = instantBpm
-      lastPublishedRateRef.current = instantBpm
-      setCompressionRate(instantBpm)
-
-      if (onFeedback && newCount % 10 === 0) {
-        onFeedback(`Great work—${newCount} compressions recorded. Keep preparing for rescue breaths after 30.`)
-        lastFeedbackTimeRef.current = now
-      }
-
-      // Animate chest compression
-      setChestPosition(-0.06)
-      setTimeout(() => {
-        setChestPosition(0)
-        setIsCompressing(false)
-      }, 100)
-
-      // Check completion after 30 compressions
-      if (newCount >= 30) {
-        const avgBpm = computeBpmFromTimes(updatedTimes, now)
-        const minBpm = compressionStepConfig?.minBPM ?? 100
-        const maxBpm = compressionStepConfig?.maxBPM ?? 120
-        const inTargetRange = avgBpm >= minBpm && avgBpm <= maxBpm
-
-        if (inTargetRange) {
-          setTimeout(() => {
-            onStepComplete(currentStep)
-          }, 500)
-        } else {
-          setTimeout(() => {
-            setCompressionFailed(true)
-          }, 500)
-        }
-      }
-    }
-  }
-
-  return (
-    <group ref={meshRef}>
-      {modelScene ? (
-        <primitive
-          object={modelScene.clone()}
-          scale={[DUMMY_SCALE, DUMMY_SCALE, DUMMY_SCALE]}
-          position={[0, modelBaseOffset, 0]}
-          rotation={[DUMMY_ROTATION.x, DUMMY_ROTATION.y, DUMMY_ROTATION.z]}
-        />
-      ) : (
-        <group position={[0, modelBaseOffset, 0]} scale={[DUMMY_SCALE, DUMMY_SCALE, DUMMY_SCALE]}>
-          <mesh position={[0, 1, 0]}>
-            <boxGeometry args={[0.8, 1.2, 0.4]} />
-            <meshStandardMaterial color="#fdbcb4" />
-          </mesh>
-          <mesh position={[0, 2.2, 0]}>
-            <sphereGeometry args={[0.25]} />
-            <meshStandardMaterial color="#fdbcb4" />
-          </mesh>
-          <mesh position={[-0.6, 0.8, 0]}>
-            <cylinderGeometry args={[0.1, 0.1, 1]} />
-            <meshStandardMaterial color="#fdbcb4" />
-          </mesh>
-          <mesh position={[0.6, 0.8, 0]}>
-            <cylinderGeometry args={[0.1, 0.1, 1]} />
-            <meshStandardMaterial color="#fdbcb4" />
-          </mesh>
-          <mesh position={[-0.2, -0.5, 0]}>
-            <cylinderGeometry args={[0.12, 0.12, 1.2]} />
-            <meshStandardMaterial color="#fdbcb4" />
-          </mesh>
-          <mesh position={[0.2, -0.5, 0]}>
-            <cylinderGeometry args={[0.12, 0.12, 1.2]} />
-            <meshStandardMaterial color="#fdbcb4" />
-          </mesh>
-        </group>
-      )}
-
-      {currentStep === 0 && (
-        <>
-          <mesh position={[3, 2, 2]}>
-            <sphereGeometry args={[0.08]} />
-            <meshStandardMaterial color="#00ff00" emissive="#004400" />
-          </mesh>
-          <mesh position={[-3, 2, 2]}>
-            <sphereGeometry args={[0.08]} />
-            <meshStandardMaterial color="#00ff00" emissive="#004400" />
-          </mesh>
-          <mesh position={[2, 2, -3]}>
-            <sphereGeometry args={[0.08]} />
-            <meshStandardMaterial color="#00ff00" emissive="#004400" />
-          </mesh>
-          <mesh position={[-2, 2, -3]}>
-            <sphereGeometry args={[0.08]} />
-            <meshStandardMaterial color="#00ff00" emissive="#004400" />
-          </mesh>
-        </>
-      )}
-
-      <mesh
-        position={[0.27, -9.47, 2.0]}
-        onClick={handleChestClick}
-        onPointerOver={() => (document.body.style.cursor = 'pointer')}
-        onPointerOut={() => (document.body.style.cursor = 'default')}
-      >
-        <sphereGeometry args={[0.15]} />
-        <meshBasicMaterial color="#ff0000" transparent={false} />
-      </mesh>
-    </group>
-  )
+class SceneBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  render() { return this.state.failed ? this.props.fallback : this.props.children }
 }
 
-
-
-function CameraController({ currentStep }: { currentStep: number }) {
-  const { camera } = useThree()
+function CameraController({ currentStep, resetKey, overhead, onExplore, onContextLost }: {
+  currentStep: number
+  resetKey: number
+  overhead: boolean
+  onExplore: () => void
+  onContextLost: () => void
+}) {
+  const { camera, gl, invalidate } = useThree()
   const controlsRef = useRef<OrbitControlsImpl | null>(null)
-  const previousStepRef = useRef(currentStep)
-
-  // Smooth camera transition function
-  const smoothTransition = useCallback((
-    targetPosition: [number, number, number], 
-    targetLookAt: [number, number, number], 
-    duration: number = 1000
-  ) => {
-    
-    const startPosition = camera.position.clone()
-    const startTarget = controlsRef.current?.target.clone() || new THREE.Vector3(0, 0, 0)
-    
-    const endPosition = new THREE.Vector3(...targetPosition)
-    const endTarget = new THREE.Vector3(...targetLookAt)
-    
-    const startTime = Date.now()
-    
-    const animate = () => {
-      const elapsed = Date.now() - startTime
-      const progress = Math.min(elapsed / duration, 1)
-      
-      // Ease-in-out function for smooth animation
-      const easeInOut = (t: number) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
-      const easedProgress = easeInOut(progress)
-      
-      //camera position
-      camera.position.lerpVectors(startPosition, endPosition, easedProgress)
-      
-      //target position
-      if (controlsRef.current) {
-        controlsRef.current.target.lerpVectors(startTarget, endTarget, easedProgress)
-        controlsRef.current.update()
-      }
-      
-      if (progress < 1) {
-        requestAnimationFrame(animate)
-      } else {
-        // Enable controls
-        if (controlsRef.current) {
-          controlsRef.current.enabled = true
-          controlsRef.current.enableRotate = true
-          controlsRef.current.enablePan = false
-          controlsRef.current.enableZoom = true
-        }
-      }
-    }
-    
-    requestAnimationFrame(animate)
-  }, [camera])
+  const destinationRef = useRef(new THREE.Vector3())
+  const targetRef = useRef(new THREE.Vector3())
+  const transitioningRef = useRef(false)
 
   useEffect(() => {
-    const controls = controlsRef.current
-    if (!controls) return
-
-    controls.enabled = true
-    controls.enableRotate = true
-    controls.enablePan = false
-    controls.enableZoom = true
-
-    const previousStep = previousStepRef.current
-    if (currentStep >= 1 && previousStep === 0) {
-      smoothTransition([0.41, -1.96, 8.94], [0.27, -3.47, 0.10], 1500)
-    } else if (currentStep >= 1) {
-      camera.position.set(0.41, -1.96, 8.94)
-      controls.target.set(0.27, -3.47, 0.10)
-      controls.update()
+    const step = CPR_SIMULATION_STEPS[currentStep] ?? CPR_SIMULATION_STEPS[0]
+    destinationRef.current.set(...(overhead ? [0, 4.5, 0.01] as [number, number, number] : step.cameraPosition))
+    targetRef.current.set(...step.cameraTarget)
+    transitioningRef.current = true
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      camera.position.copy(destinationRef.current)
+      controlsRef.current?.target.copy(targetRef.current)
+      controlsRef.current?.update()
+      transitioningRef.current = false
     }
+    invalidate()
+  }, [camera, currentStep, overhead, resetKey, invalidate])
 
-    previousStepRef.current = currentStep
-  }, [camera, currentStep, smoothTransition])
+  useEffect(() => {
+    const canvas = gl.domElement
+    const lost = (event: Event) => { event.preventDefault(); onContextLost() }
+    canvas.addEventListener('webglcontextlost', lost)
+    return () => canvas.removeEventListener('webglcontextlost', lost)
+  }, [gl, onContextLost])
+
+  useFrame((_, delta) => {
+    if (!transitioningRef.current || !controlsRef.current) return
+    const speed = 1 - Math.exp(-delta * 7)
+    camera.position.lerp(destinationRef.current, speed)
+    controlsRef.current.target.lerp(targetRef.current, speed)
+    controlsRef.current.update()
+    if (camera.position.distanceTo(destinationRef.current) < 0.006) transitioningRef.current = false
+    else invalidate()
+  })
 
   return (
     <OrbitControls
       ref={controlsRef}
-      enableDamping
-      dampingFactor={0.05}
-      minDistance={0.15}
-      maxDistance={260}
-      maxPolarAngle={Math.PI * 0.499}
       makeDefault
+      enableDamping
+      dampingFactor={0.09}
+      enablePan={false}
+      minDistance={2.4}
+      maxDistance={6.5}
+      minPolarAngle={0.02}
+      maxPolarAngle={Math.PI * 0.45}
+      onStart={() => { transitioningRef.current = false; onExplore() }}
     />
   )
 }
 
+function RhythmGuide({ enabled }: { enabled: boolean }) {
+  const [beat, setBeat] = useState(0)
+  useEffect(() => {
+    if (!enabled) return
+    const interval = window.setInterval(() => setBeat(previous => previous + 1), 60_000 / 110)
+    return () => window.clearInterval(interval)
+  }, [enabled])
+  return (
+    <span className="inline-flex items-center gap-1.5" aria-hidden="true">
+      {[0, 1, 2, 3].map(index => <span key={index} className={`h-1.5 w-1.5 rounded-full ${enabled && beat % 4 === index ? 'bg-emerald-600' : 'bg-slate-300'}`} />)}
+    </span>
+  )
+}
+
+const controlClass = 'inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500'
+
+function supportsWebGL() {
+  if (typeof document === 'undefined') return false
+  // Three.js requires WebGL 2. Detect support before Fiber's async setup,
+  // whose context creation errors can escape a React error boundary.
+  try {
+    const context = document.createElement('canvas').getContext('webgl2')
+    if (!context) return false
+    context.getExtension('WEBGL_lose_context')?.loseContext()
+    return true
+  } catch {
+    return false
+  }
+}
 
 export default function CPRSimulation({
   onStepComplete,
   currentStep,
+  sceneViewTime,
   setSceneViewTime,
+  handsPlaced,
   setHandsPlaced,
   compressionCount,
   setCompressionCount,
+  compressionRate,
   setCompressionRate,
   compressionFailed,
   setCompressionFailed,
   compressionTimes,
   setCompressionTimes,
   onFeedback,
-  isFullscreen = false
+  isFullscreen = false,
 }: CPRSimulationProps) {
-  const step = CPR_SIMULATION_STEPS[currentStep] || CPR_SIMULATION_STEPS[0]
-  const containerClasses = isFullscreen
-    ? 'w-full h-full min-h-[600px] relative rounded-3xl overflow-hidden'
-    : 'w-full h-[480px] relative rounded-2xl overflow-hidden'
-  const canvasStyle: CSSProperties = {
-    position: 'relative',
-    zIndex: 1,
-    background: isFullscreen ? '#edf2ff' : '#f1f5f9'
-  }
+  const [resetKey, setResetKey] = useState(0)
+  const [overhead, setOverhead] = useState(false)
+  const [reviewStarted, setReviewStarted] = useState(false)
+  const [guideEnabled, setGuideEnabled] = useState(true)
+  const [webglFailed, setWebglFailed] = useState(() => !supportsWebGL())
+  const [lastTap, setLastTap] = useState<number | null>(null)
+  const [localFeedback, setLocalFeedback] = useState('')
+  const timestampsRef = useRef(compressionTimes)
+  const completedRef = useRef(false)
+  const previousStepRef = useRef(currentStep)
+  const previousReviewTimeRef = useRef(sceneViewTime)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const step = CPR_SIMULATION_STEPS[currentStep] ?? CPR_SIMULATION_STEPS[0]
+  const roundEnded = compressionCount >= COMPRESSION_TARGET_COUNT
+  const result = assessCompressionRhythm(compressionTimes)
+  const roundPassed = result.passed || (roundEnded && !compressionFailed && compressionTimes.length === 0)
+  const controlsDisabled = currentStep !== 1 && (currentStep !== 2 || compressionFailed || roundEnded)
+
+  const feedback = useCallback((message: string) => {
+    setLocalFeedback(message)
+    onFeedback?.(message)
+  }, [onFeedback])
+
+  useEffect(() => {
+    timestampsRef.current = compressionTimes
+    if (compressionTimes.length === 0) {
+      completedRef.current = false
+      setLastTap(null)
+      setLocalFeedback('')
+    }
+  }, [compressionTimes])
+
+  useEffect(() => {
+    if (previousStepRef.current !== currentStep) {
+      setLocalFeedback('')
+      if (currentStep === 0) setReviewStarted(false)
+      previousStepRef.current = currentStep
+    }
+  }, [currentStep])
+
+  useEffect(() => {
+    if (sceneViewTime === 0 && previousReviewTimeRef.current > 0) setReviewStarted(false)
+    previousReviewTimeRef.current = sceneViewTime
+  }, [sceneViewTime])
+
+  // A three-second review is a teaching pause, not automated hazard detection.
+  // Only count time after interaction, while the scene is visible and focused.
+  useEffect(() => {
+    if (currentStep !== 0 || !reviewStarted || sceneViewTime >= 3) return
+    let previousTime = performance.now()
+    const interval = window.setInterval(() => {
+      const now = performance.now()
+      const elapsed = Math.min(0.2, (now - previousTime) / 1000)
+      previousTime = now
+      if (document.visibilityState !== 'visible' || !document.hasFocus()) return
+      const bounds = containerRef.current?.getBoundingClientRect()
+      if (!bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight) return
+      setSceneViewTime(previous => Math.min(3, previous + elapsed))
+    }, 100)
+    return () => window.clearInterval(interval)
+  }, [currentStep, reviewStarted, sceneViewTime, setSceneViewTime])
+
+  useEffect(() => {
+    if (currentStep !== 2 || compressionTimes.length < 2 || roundEnded) return
+    const interval = window.setInterval(() => {
+      setCompressionRate(getLiveCompressionRate(timestampsRef.current, performance.now()))
+    }, 150)
+    return () => window.clearInterval(interval)
+  }, [currentStep, compressionTimes.length, roundEnded, setCompressionRate])
+
+  // Notify after the final counters and result have reached the parent. There is
+  // no deferred timeout that could complete an abandoned or reset practice round.
+  useEffect(() => {
+    if (currentStep === 2 && result.passed && !compressionFailed && !completedRef.current) {
+      completedRef.current = true
+      onStepComplete(2)
+    }
+  }, [currentStep, result.passed, compressionFailed, onStepComplete])
+
+  const activate = useCallback(() => {
+    if (currentStep === 1) {
+      setHandsPlaced(true)
+      feedback('Hand position rehearsed. Keep one hand over the other on the center of the chest.')
+      onStepComplete(1)
+      return
+    }
+    if (currentStep !== 2 || compressionFailed || roundEnded || timestampsRef.current.length >= COMPRESSION_TARGET_COUNT) return
+    const now = performance.now()
+    const times = [...timestampsRef.current, now]
+    timestampsRef.current = times
+    setLastTap(now)
+    setCompressionTimes(times)
+    setCompressionCount(times.length)
+    const assessment = assessCompressionRhythm(times)
+    const rate = getLiveCompressionRate(times, now)
+    setCompressionRate(rate)
+
+    if (assessment.complete) {
+      setCompressionFailed(!assessment.passed)
+      feedback(assessment.passed
+        ? `Rhythm round complete: ${Math.round(assessment.averageBpm)} BPM average, ${Math.round(assessment.steadyRatio * 100)}% of intervals on tempo.`
+        : `Round recorded: ${Math.round(assessment.averageBpm)} BPM average, ${Math.round(assessment.steadyRatio * 100)}% of intervals on tempo. Follow the 110 BPM guide and try again.`)
+    } else if (times.length === 1) {
+      feedback('Keep tapping steadily. The rhythm guide moves at 110 beats per minute.')
+    } else if (times.length % 4 === 0) {
+      feedback(rate < 100 ? 'A little faster. Aim for one tap with each beat of the guide.'
+        : rate > 120 ? 'Ease the pace. Aim for one tap with each beat of the guide.'
+        : 'Your recent rhythm is in the target range. Keep it steady.')
+    }
+  }, [currentStep, compressionFailed, roundEnded, setHandsPlaced, feedback, onStepComplete, setCompressionTimes, setCompressionCount, setCompressionRate, setCompressionFailed])
+
+  const beginReview = useCallback(() => setReviewStarted(true), [])
+  const handleContextLost = useCallback(() => setWebglFailed(true), [])
+  const fallback = <FlatMannequin handsPlaced={handsPlaced} onActivate={activate} disabled={controlsDisabled} />
+  const rateLabel = compressionCount < 2 ? 'Find your rhythm' : compressionRate < 100 ? 'Speed up a little' : compressionRate > 120 ? 'Ease the pace' : 'On tempo'
 
   return (
-    <div className={containerClasses} style={{ zIndex: 1 }}>
-      <Canvas
-        camera={{ position: step.cameraPosition as [number, number, number], fov: 50 }}
-        style={canvasStyle}
-      >
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[10, 10, 5]} intensity={1} />
-        <pointLight position={[-10, -10, -5]} intensity={0.3} />
+    <div ref={containerRef} className="relative w-full overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <div className={`relative bg-[#e9eeeb] ${isFullscreen ? 'h-[58vh] min-h-[340px]' : 'h-[350px] sm:h-[440px]'}`}>
+        <div className="pointer-events-none absolute left-4 right-4 top-4 z-10 flex items-start justify-between gap-3">
+          <div className="rounded-xl bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Adult CPR · Practice studio</p>
+            <p className="mt-1 text-sm font-semibold text-slate-800">{step.title}</p>
+          </div>
+          {!webglFailed && <div className="pointer-events-auto flex gap-1.5">
+            <button type="button" className={controlClass} onClick={() => { setOverhead(previous => !previous); beginReview() }} aria-pressed={overhead} title="Switch between overhead and angled view">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 12 9 5 9-5M3 16l9 5 9-5" /></svg>
+              <span className="hidden sm:inline">{overhead ? 'Angled' : 'Top view'}</span>
+            </button>
+            <button type="button" className={controlClass} onClick={() => { setOverhead(false); setResetKey(previous => previous + 1) }} aria-label="Reset camera view" title="Reset camera view">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 10a9 9 0 1 1 2 8M3 4v6h6" /></svg>
+            </button>
+          </div>}
+        </div>
+        {webglFailed ? fallback : (
+          <SceneBoundary fallback={fallback}>
+            <Canvas
+              frameloop="demand"
+              shadows
+              dpr={[1, 1.75]}
+              camera={{ position: CPR_SIMULATION_STEPS[0].cameraPosition, fov: 39, near: 0.1, far: 100 }}
+              gl={{ antialias: true, powerPreference: 'high-performance' }}
+              fallback={fallback}
+              aria-label="Interactive adult CPR training mannequin. Drag to rotate and scroll or pinch to zoom. Use the practice button below to place hands or tap."
+              style={{ touchAction: 'none' }}
+            >
+              <color attach="background" args={['#e9eeeb']} />
+              <hemisphereLight args={['#ffffff', '#8c9c96', 2.3]} />
+              <directionalLight position={[-3, 6, 4]} intensity={3.2} castShadow shadow-mapSize={[1024, 1024]} shadow-camera-left={-3} shadow-camera-right={3} shadow-camera-top={3} shadow-camera-bottom={-3} shadow-normalBias={0.025} shadow-bias={-0.0002} />
+              <directionalLight position={[3, 2, -4]} intensity={1.3} color="#d7ecf5" />
+              <TrainingMannequin currentStep={currentStep} handsPlaced={handsPlaced} lastTap={lastTap} onActivate={activate} disabled={controlsDisabled} />
+              <CameraController currentStep={currentStep} resetKey={resetKey} overhead={overhead} onExplore={beginReview} onContextLost={handleContextLost} />
+            </Canvas>
+          </SceneBoundary>
+        )}
+        {!webglFailed && <div className="pointer-events-none absolute bottom-3 left-4 right-4 z-10 flex items-center justify-between gap-3 text-[11px] text-slate-600">
+          <span className="rounded-md bg-white/80 px-2 py-1">Drag to orbit · Scroll or pinch to zoom</span>
+          <span className="hidden rounded-md bg-white/80 px-2 py-1 sm:inline">Training mannequin</span>
+        </div>}
+      </div>
 
-        <CPRDummy 
-          currentStep={currentStep} 
-          onStepComplete={onStepComplete}
-          setSceneViewTime={setSceneViewTime}
-          setHandsPlaced={setHandsPlaced}
-          compressionCount={compressionCount}
-          setCompressionCount={setCompressionCount}
-          setCompressionRate={setCompressionRate}
-          compressionFailed={compressionFailed}
-          setCompressionFailed={setCompressionFailed}
-          compressionTimes={compressionTimes}
-          setCompressionTimes={setCompressionTimes}
-          onFeedback={onFeedback}
-        />
-        <CameraController currentStep={currentStep} />
-      </Canvas>
+      <div className="border-t border-slate-200 px-4 py-4 sm:px-5">
+        {currentStep === 0 ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Pause. Check the scene. Prepare to help.</p>
+              <p className="mt-1 max-w-md text-xs leading-relaxed text-slate-500">Review for hazards before approaching. This practice scene does not detect real-world hazards.</p>
+            </div>
+            <button type="button" onClick={() => sceneViewTime >= 3 ? onStepComplete(0) : beginReview()} disabled={reviewStarted && sceneViewTime < 3} className="shrink-0 rounded-lg bg-slate-800 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-700 disabled:bg-slate-100 disabled:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">
+              {sceneViewTime >= 3 ? 'Ready to place hands' : reviewStarted ? `Reviewing · ${Math.max(1, Math.ceil(3 - sceneViewTime))}s` : 'Review the scene'}
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              {currentStep === 2 ? (
+                <>
+                  <div className="flex items-baseline gap-2.5">
+                    <span className="text-2xl font-semibold tabular-nums tracking-tight text-slate-800">{compressionCount}<span className="ml-1 text-sm font-normal text-slate-400">/ 30</span></span>
+                    <span className="h-5 border-l border-slate-200" />
+                    <span className="text-lg font-semibold tabular-nums text-slate-800">{compressionCount >= 2 && compressionRate > 0 ? Math.round(compressionRate) : '—'} <span className="text-xs font-normal text-slate-500">BPM</span></span>
+                    <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${compressionFailed ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-700'}`}>{roundEnded ? roundPassed ? 'Round complete' : 'Try again' : rateLabel}</span>
+                  </div>
+                  <button type="button" onClick={() => setGuideEnabled(previous => !previous)} aria-pressed={guideEnabled} className="mt-2 flex items-center gap-2 rounded text-xs text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500">
+                    <RhythmGuide enabled={guideEnabled && !roundEnded} />
+                    110 BPM guide {guideEnabled ? 'on' : 'off'}
+                  </button>
+                </>
+              ) : (
+                <><p className="text-sm font-semibold text-slate-800">Find the center of the chest</p><p className="mt-1 text-xs text-slate-500">Use the green target or the button to rehearse hand position.</p></>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={activate}
+              onKeyDown={event => { if (event.repeat && (event.key === ' ' || event.key === 'Enter')) event.preventDefault() }}
+              disabled={controlsDisabled}
+              className="min-w-[165px] select-none rounded-xl bg-emerald-600 px-5 py-3.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-slate-100 disabled:text-slate-500 disabled:shadow-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+              style={{ touchAction: 'manipulation' }}
+            >
+              {currentStep === 1 ? 'Place hands' : roundEnded ? 'Round recorded' : 'Tap to compress'}
+              {!controlsDisabled && <span className="mt-0.5 block text-[10px] font-normal opacity-80">{currentStep === 1 ? 'Center of the chest' : 'Click, tap or focus + Space'}</span>}
+            </button>
+          </div>
+        )}
+        {currentStep === 2 && <p className="mt-3 text-[11px] leading-relaxed text-slate-500">Rhythm practice only. Taps do not measure compression depth, recoil, or physical technique.</p>}
+        <p role="status" aria-live="polite" className="sr-only">{localFeedback}</p>
+      </div>
     </div>
   )
 }
-
-// Preload the 3D model
-useGLTF.preload('/models/basic_human_mesh.glb')

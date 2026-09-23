@@ -174,7 +174,7 @@ const FlashcardDeck = ({ cards, title, subtitle }: FlashcardDeckProps) => {
   })()
 
   return (
-    <div className="bg-white rounded-2xl p-8 shadow-sm">
+    <div className="flashcard-deck bg-white rounded-2xl p-4 sm:p-8">
       {title && (
         <div className="mb-6">
           <h3 className="text-lg font-semibold text-slate-800">{title}</h3>
@@ -197,6 +197,7 @@ const FlashcardDeck = ({ cards, title, subtitle }: FlashcardDeckProps) => {
               className="relative w-full min-h-[400px] cursor-pointer"
               onClick={handleFlip}
               role="button"
+              aria-label={showBack ? "Flashcard answer. Activate to show question" : "Flashcard question. Activate to show answer"}
               tabIndex={0}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
@@ -213,7 +214,8 @@ const FlashcardDeck = ({ cards, title, subtitle }: FlashcardDeckProps) => {
             {/* Front of Card */}
             <div
               ref={frontRef}
-              className="absolute inset-0 rounded-2xl p-8 flex flex-col justify-center items-center text-center border border-slate-200 bg-slate-50"
+              aria-hidden={showBack}
+              className="absolute inset-0 rounded-2xl p-4 sm:p-8 flex flex-col justify-center items-center text-center border border-slate-200 bg-slate-50"
               style={{
                 backfaceVisibility: 'hidden',
                 minHeight: '400px',
@@ -226,7 +228,7 @@ const FlashcardDeck = ({ cards, title, subtitle }: FlashcardDeckProps) => {
               >
                 Question
               </span>
-              <div className="text-lg leading-relaxed font-semibold px-4">
+              <div className="text-base sm:text-lg leading-relaxed font-semibold sm:px-4">
                 {currentCard.front}
               </div>
               <div className="mt-6 text-xs" style={{ color: frontTextColor, opacity: 0.65 }}>
@@ -237,7 +239,8 @@ const FlashcardDeck = ({ cards, title, subtitle }: FlashcardDeckProps) => {
             {/* Back of Card */}
             <div
               ref={backRef}
-              className="absolute inset-0 rounded-2xl p-8 flex flex-col justify-center items-center text-center border border-slate-300 bg-slate-800"
+              aria-hidden={!showBack}
+              className="absolute inset-0 rounded-2xl p-4 sm:p-8 flex flex-col justify-center items-center text-center border border-slate-300 bg-slate-800"
               style={{
                 backfaceVisibility: 'hidden',
                 transform: 'rotateX(180deg)',

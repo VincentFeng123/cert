@@ -1,0 +1,138 @@
+.guided-training { min-height: 100vh; background: #f8fafc; padding: 28px 0 80px; color: #1e293b; }
+.training-topline { display: flex; justify-content: space-between; gap: 20px; align-items: center; color: #64748b; font-size: 13px; margin-bottom: 36px; }
+.training-topline > span, .training-back { display: inline-flex; align-items: center; gap: 9px; }
+.training-back { padding: 10px 0; font-weight: 600; }
+.training-back:hover { color: #0f172a; }
+.training-header { display: flex; align-items: center; justify-content: space-between; gap: 32px; margin-bottom: 32px; }
+.training-header h1 { font-size: clamp(26px, 3.1vw, 36px); line-height: 1.2; font-weight: 750; letter-spacing: -.035em; margin: 7px 0 10px; }
+.training-header > div > p:last-child { font-size: 15px; color: #64748b; }
+.training-section-label { font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: #64748b; font-weight: 700; margin-bottom: 8px; }
+.training-section-label svg { margin-right: 5px; }
+.training-progress { width: 190px; flex-shrink: 0; }
+.training-progress > span { display: flex; justify-content: space-between; font-size: 12px; color: #64748b; margin-bottom: 9px; }
+.training-progress strong { color: #334155; }
+.training-progress > div, .training-mini-progress { background: #e2e8f0; border-radius: 999px; height: 8px; overflow: hidden; }
+.training-progress i, .training-mini-progress > span { height: 100%; display: block; background: #334155; border-radius: 999px; transition: width .25s; }
+.training-progress small { display: block; text-align: right; margin-top: 6px; color: #64748b; font-size: 11px; }
+.training-stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 26px; }
+.training-stages button { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 15px 12px; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; text-align: left; color: #64748b; font-size: 12px; transition: background .15s, border-color .15s; }
+.training-stages button > span { font-size: 10px; height: 24px; min-width: 24px; display: grid; place-items: center; border-radius: 50%; background: #f1f5f9; color: #475569; }
+.training-stages button.is-active { background: #1e293b; border-color: #1e293b; color: white; }
+.training-stages button.is-active > span { background: #475569; color: white; }
+.training-stages button:hover:not(.is-active) { border-color: #94a3b8; }
+.training-columns { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; }
+.training-main { min-width: 0; scroll-margin-top: 20px; }
+.training-main:focus { outline: none; }
+.training-content { padding: 36px; }
+.training-content h2 { font-size: 25px; line-height: 1.3; font-weight: 700; letter-spacing: -.025em; margin: 0 0 10px; }
+.training-lead { font-size: 14px; color: #64748b; line-height: 1.8; margin-bottom: 26px; max-width: 60ch; }
+.training-visual { min-height: 238px; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 18px; padding: 32px 22px; margin: 28px 0; display: flex; justify-content: center; align-items: center; gap: 28px; flex-wrap: wrap; }
+.training-visual-number { text-align: center; }
+.training-visual-number strong { display: block; font-size: 74px; font-weight: 500; letter-spacing: -.07em; line-height: 1.1; color: #334155; }
+.training-visual-number span { font-size: 12px; color: #475569; }
+.training-visual-arrow { font-size: 25px; color: #94a3b8; }
+.training-visual > p { flex-basis: 100%; font-size: 12px; color: #64748b; text-align: center; }
+.training-visual-path { gap: 16px; }
+.training-visual-path > span { display: grid; gap: 14px; justify-items: center; color: #475569; font-size: 12px; }
+.training-visual-path > span svg { border: 1px solid #cbd5e1; border-radius: 50%; padding: 20px; width: 26px; height: 26px; box-sizing: content-box; background: white; }
+.training-visual-path > i { width: 30px; height: 1px; background: #cbd5e1; margin-bottom: 30px; }
+.training-visual-support { flex-direction: column; gap: 12px; }
+.training-dialogue { padding: 13px 25px; border-radius: 18px 18px 18px 3px; background: white; border: 1px solid #dbe2eb; font-size: 17px; font-weight: 600; align-self: center; margin-right: 42px; }
+.training-dialogue:nth-child(2) { border-radius: 18px 18px 3px 18px; margin: 0 0 0 42px; background: #334155; border-color: #334155; color: white; }
+.training-visual-support > p { flex-basis: auto; margin-top: 6px; }
+.training-subheading { font-size: 16px; font-weight: 650; margin-bottom: 16px; }
+.training-objectives { display: grid; gap: 14px; margin-bottom: 26px; font-size: 14px; color: #475569; }
+.training-objectives li { display: flex; align-items: baseline; gap: 12px; }
+.training-objectives svg { color: #64748b; flex-shrink: 0; }
+.training-note { display: flex; align-items: baseline; gap: 12px; padding: 18px; border: 1px solid #e2e8f0; background: #f8fafc; border-radius: 12px; font-size: 12px; color: #64748b; line-height: 1.8; }
+.training-note svg { flex-shrink: 0; }
+.training-study-switch { display: inline-flex; background: #f1f5f9; padding: 4px; border-radius: 12px; gap: 3px; margin-bottom: 25px; }
+.training-study-switch button { border-radius: 9px; padding: 10px 19px; color: #64748b; font-size: 12px; font-weight: 600; }
+.training-study-switch button.is-active { background: white; color: #1e293b; box-shadow: 0 1px 3px #0f172a0b; }
+.training-lessons { display: grid; gap: 14px; }
+.training-lesson { display: flex; gap: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-left: 3px solid #94a3b8; border-radius: 3px 14px 14px 3px; padding: 22px; }
+.training-lesson-number { color: #94a3b8; font-size: 12px; font-weight: 700; padding-top: 3px; }
+.training-lesson h3 { font-size: 15px; line-height: 1.5; font-weight: 700; margin: 0 0 6px; }
+.training-lesson p { color: #475569; font-size: 13px; font-weight: 500; margin-bottom: 12px; }
+.training-lesson ul { padding-left: 17px; list-style: disc; display: grid; gap: 7px; font-size: 12px; color: #64748b; line-height: 1.8; }
+.training-footer { border-top: 1px solid #f1f5f9; padding: 25px 36px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.training-footer > span { color: #94a3b8; font-size: 11px; }
+.training-page .btn-primary, .training-page .btn-secondary { display: inline-flex; justify-content: center; align-items: center; gap: 10px; padding: 12px 19px; border-radius: 12px; font-size: 12px; letter-spacing: 0; }
+.training-page button:disabled { cursor: not-allowed; }
+.training-page .btn-primary:disabled { background: #e2e8f0; color: #94a3b8; border-color: transparent; }
+.training-page button:focus-visible, .training-page a:focus-visible, .training-page summary:focus-visible { outline: 3px solid #94a3b8; outline-offset: 4px; }
+.training-sidebar { display: grid; gap: 18px; min-width: 0; }
+.training-sidebar-card { border: 1px solid #e2e8f0; border-radius: 20px; background: white; padding: 24px; min-width: 0; }
+.training-takeaway { font-size: 14px; line-height: 1.8; color: #334155; font-weight: 500; }
+.training-save-label { display: flex; align-items: center; gap: 7px; margin-top: 20px; font-size: 10px; color: #64748b; }
+.training-assistant { padding: 6px; overflow: hidden; }
+.training-sources h3 { font-size: 12px; font-weight: 650; }
+.training-sources > p { font-size: 10px; color: #94a3b8; margin: 5px 0 16px; }
+.training-sources > a { display: flex; gap: 9px; justify-content: space-between; font-size: 11px; line-height: 1.7; color: #475569; padding: 10px 0; border-top: 1px solid #f1f5f9; }
+.training-sources > a:hover { text-decoration: underline; }
+.training-sources small { display: block; color: #94a3b8; font-size: 10px; line-height: 1.8; margin-top: 14px; }
+.training-question-progress { display: flex; justify-content: space-between; align-items: center; gap: 20px; font-size: 12px; color: #64748b; margin: 28px 0 18px; }
+.training-mini-progress { width: 140px; height: 5px; }
+.training-question { font-size: 17px; line-height: 1.6; font-weight: 650; margin: 20px 0; }
+.training-options { display: grid; gap: 10px; }
+.training-option { width: 100%; display: flex; align-items: center; gap: 13px; background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px; text-align: left; font-size: 13px; color: #475569; line-height: 1.6; transition: border-color .15s, background .15s; }
+.training-option > span:nth-child(2) { flex: 1; }
+.training-option-letter { width: 28px; height: 28px; flex-shrink: 0; display: grid; place-items: center; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 10px; font-weight: 600; }
+.training-option:hover:not(:disabled), .training-option.is-selected { border-color: #64748b; background: #f8fafc; color: #1e293b; }
+.training-option.is-correct { border-color: #86b5a0; background: #f1f8f4; color: #276347; }
+.training-option.is-incorrect { border-color: #d8aca3; background: #fff7f5; color: #954f40; }
+.training-quiz-actions { display: flex; justify-content: flex-end; margin-top: 24px; }
+.training-feedback { margin-top: 20px; border: 1px solid #dbe3eb; background: #f8fafc; border-radius: 12px; padding: 20px; font-size: 13px; line-height: 1.8; }
+.training-feedback.is-correct { background: #f2f8f5; border-color: #c6dfd2; color: #32634c; }
+.training-feedback.is-incorrect { background: #fff8f4; border-color: #edd7ca; color: #8a5a40; }
+.training-feedback strong { display: block; font-size: 13px; }
+.training-feedback p { margin-top: 5px; }
+.training-feedback button { margin-top: 16px; }
+.training-result { border: 1px solid #dbe4eb; border-radius: 18px; background: #f8fafc; text-align: center; padding: 30px 24px; margin: 25px 0; }
+.training-score { font-size: 64px; line-height: 1.2; font-weight: 650; letter-spacing: -.07em; display: block; color: #334155; margin-bottom: 12px; }
+.training-score small { font-size: 24px; color: #94a3b8; margin-left: 4px; }
+.training-result h3 { font-size: 20px; font-weight: 650; margin: 10px 0; }
+.training-result p { color: #64748b; font-size: 13px; line-height: 1.8; max-width: 46ch; margin: 0 auto 22px; }
+.training-result-icon { display: grid; place-items: center; margin: 0 auto 16px; width: 56px; height: 56px; border-radius: 50%; border: 1px solid #cbd5e1; color: #475569; background: white; font-size: 24px; }
+.training-result-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
+.training-answer-review > h3 { font-size: 15px; font-weight: 650; margin: 25px 0 14px; }
+.training-answer-review details { border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 9px; overflow: hidden; }
+.training-answer-review summary { display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 15px; font-size: 12px; list-style: none; }
+.training-answer-review summary::-webkit-details-marker { display: none; }
+.training-answer-review summary > span:nth-child(2) { flex: 1; }
+.training-answer-review summary > svg { color: #94a3b8; width: 8px; }
+.training-answer-review details[open] summary > svg { transform: rotate(90deg); }
+.training-review-mark { color: #a77654; font-size: 15px; }
+.training-review-mark.is-correct { color: #56876e; }
+.training-answer-review details > div { border-top: 1px solid #e2e8f0; padding: 18px; background: #f8fafc; font-size: 12px; line-height: 1.8; color: #64748b; display: grid; gap: 8px; }
+.training-scenario-list { display: grid; gap: 14px; }
+.training-scenario-card { display: flex; align-items: center; gap: 17px; padding: 22px; border: 1px solid #e2e8f0; border-radius: 16px; text-align: left; transition: border-color .15s, background .15s; }
+.training-scenario-card:hover { border-color: #94a3b8; background: #f8fafc; }
+.training-scenario-icon { color: #64748b; width: 42px; height: 42px; background: #f1f5f9; display: grid; place-items: center; border-radius: 12px; flex-shrink: 0; }
+.training-scenario-card-copy { display: grid; gap: 5px; flex: 1; }
+.training-scenario-card-copy small { color: #64748b; font-size: 10px; }
+.training-scenario-card-copy strong { font-size: 15px; font-weight: 650; }
+.training-scenario-card-copy > span { font-size: 12px; color: #64748b; line-height: 1.7; }
+.training-scenario-card > svg { font-size: 12px; color: #64748b; }
+.training-text-button { display: inline-flex; align-items: center; gap: 9px; font-size: 12px; color: #64748b; font-weight: 550; }
+.training-text-button:hover { color: #1e293b; }
+.training-scenario > .training-text-button { margin-bottom: 28px; }
+.training-scenario h3 { font-size: 22px; font-weight: 650; margin-bottom: 18px; }
+.training-situation { display: flex; align-items: baseline; gap: 14px; padding: 22px; border-radius: 14px; background: #f1f5f9; color: #475569; font-size: 14px; line-height: 1.8; }
+.training-situation svg { color: #94a3b8; flex-shrink: 0; }
+.training-completion { border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; margin-top: 26px; }
+.training-completion h3 { font-size: 15px; font-weight: 650; }
+.training-completion ul { margin: 16px 0 20px; display: grid; gap: 12px; }
+.training-completion li { display: flex; align-items: center; gap: 10px; color: #64748b; font-size: 12px; }
+.training-completion li > span { flex: 1; }
+.training-completion li > strong { font-size: 10px; font-weight: 500; }
+.training-completion li > button { padding: 5px 8px; color: #334155; }
+.training-completion > p { margin-top: 10px; font-size: 11px; color: #94a3b8; }
+.training-storage-notice { border-radius: 10px; background: #fff8eb; color: #856434; padding: 12px 18px; margin-bottom: 20px; font-size: 12px; }
+.training-privacy-note { display: flex; align-items: center; justify-content: space-between; gap: 20px; border: 1px solid #dbe3eb; border-radius: 12px; padding: 14px 18px; margin-bottom: 24px; background: white; }
+.training-privacy-note p { font-size: 11px; color: #64748b; line-height: 1.7; }
+.training-privacy-note a { color: #334155; font-size: 12px; font-weight: 650; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; }
+@media (max-width: 1050px) { .training-columns { grid-template-columns: minmax(0, 1fr) 270px; gap: 18px; } .training-content { padding: 28px; } .training-footer { padding: 23px 28px; } .training-sidebar-card { padding: 20px; } .training-assistant { padding: 4px; } .training-footer > span { display: none; } }
+@media (max-width: 800px) { .training-columns { grid-template-columns: minmax(0, 1fr); } .training-sidebar { grid-template-columns: 1fr 1fr; } .training-assistant { grid-column: 2; grid-row: 1 / span 2; } .training-header { gap: 20px; } .training-progress { width: 145px; } .training-header h1 { font-size: 27px; } }
+@media (max-width: 560px) { .guided-training { padding-top: 15px; } .guided-training > .container { padding: 0 18px; } .training-topline { margin-bottom: 23px; font-size: 11px; } .training-header { align-items: flex-start; flex-direction: column; gap: 18px; margin-bottom: 23px; } .training-header h1 { font-size: 27px; } .training-progress { width: 100%; } .training-progress small { text-align: left; } .training-stages { gap: 6px; margin-bottom: 18px; } .training-stages button { flex-direction: column; gap: 7px; padding: 11px 4px; text-align: center; font-size: 9px; border-radius: 12px; } .training-stages button > span { width: 22px; height: 22px; font-size: 9px; } .training-content { padding: 25px 20px; } .training-content h2 { font-size: 23px; } .training-lead { font-size: 13px; } .training-visual { min-height: 215px; padding: 25px 12px; gap: 20px; } .training-visual-number strong { font-size: 64px; } .training-visual-number span { font-size: 10px; } .training-visual-path { gap: 7px; } .training-visual-path > span svg { width: 22px; height: 22px; padding: 16px; } .training-visual-path > i { width: 14px; } .training-sidebar { grid-template-columns: 1fr; } .training-assistant { grid-column: auto; grid-row: auto; } .training-footer { padding: 20px; gap: 8px; } .training-footer .btn-primary, .training-footer .btn-secondary { padding: 11px 13px; font-size: 10px; } .training-lesson { padding: 17px 14px; gap: 10px; } .training-lesson-number { font-size: 10px; } .training-scenario-card { padding: 18px 14px; gap: 12px; } .training-scenario-icon { width: 32px; height: 32px; } .training-scenario-card-copy strong { font-size: 14px; } .training-option { padding: 13px 11px; gap: 10px; font-size: 12px; } .training-privacy-note { align-items: flex-start; flex-direction: column; gap: 10px; } .training-situation { padding: 18px; font-size: 13px; } }
+@media (prefers-reduced-motion: reduce) { .training-page *, .training-page *::before, .training-page *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }

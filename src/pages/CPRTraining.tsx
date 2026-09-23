@@ -1,10 +1,13 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { createPortal } from 'react-dom'
+import { lazy, Suspense, useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faPlay, faCheckCircle, faBook, faGraduationCap, faSquareCheck, faChartBar, faLightbulb, faBookOpen, faChevronDown, faChevronRight, faXmark, faCheck, faTrophy, faLock, faExpand, faCompress } from '@fortawesome/free-solid-svg-icons'
 import BackButton from '../components/BackButton'
-import CPRSimulation, { CPR_SIMULATION_STEPS } from '../components/CPRSimulation'
+const CPRSimulation = lazy(() => import('../components/CPRSimulation'))
+import { CPR_SIMULATION_STEPS } from '../lib/cpr-steps'
+import { restoreCprProgress, readLocal, writeLocal } from '../lib/cpr-progress'
+import { CPR_QUIZ_QUESTIONS } from '../lib/cpr-quiz'
+import '../components/training/training.css'
 import SimulationInstructions from '../components/SimulationInstructions'
 import SimpleChatbot from '../components/module/SimpleChatbot'
 import FlashcardDeck from '../components/FlashcardDeck'
@@ -18,6 +21,8 @@ type BadgeNotification = {
 }
 
 type LearningGoal = 'confidence' | 'certification' | 'refresh'
+
+const quizQuestions = CPR_QUIZ_QUESTIONS
 
 const CPRTraining = () => {
   const [currentStep, setCurrentStep] = useState(0)
@@ -40,6 +45,7 @@ const CPRTraining = () => {
   const [compressionFailed, setCompressionFailed] = useState(false)
   const [compressionTimes, setCompressionTimes] = useState<number[]>([])
   const [moduleCompleted, setModuleCompleted] = useState(false)
+  const [practiceCompleted, setPracticeCompleted] = useState(false)
   const [voiceEnabled, setVoiceEnabled] = useState(false)
   const [goal, setGoal] = useState<LearningGoal>('confidence')
   const [reviewBookmarks, setReviewBookmarks] = useState<string[]>([])
@@ -60,13 +66,20 @@ const CPRTraining = () => {
     if (!isSimulationFullscreen) return
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setSimulationFullscreen(false)
+      if (event.key === 'Escape') setSimulationFullscreen(false)
+      if (event.key === 'Tab') {
+        const controls = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button:not(:disabled), [role="dialog"] a[href], [role="dialog"] input')]
+        const first = controls[0], last = controls[controls.length - 1]
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
       }
     }
 
+    const previousFocus = document.activeElement as HTMLElement | null
+    document.querySelector<HTMLButtonElement>('[role="dialog"] button')?.focus()
     window.addEventListener('keydown', handleKeyDown)
     return () => {
+      previousFocus?.focus()
       window.removeEventListener('keydown', handleKeyDown)
     }
   }, [isSimulationFullscreen])
@@ -105,10 +118,11 @@ const CPRTraining = () => {
   const handleSimulationStepComplete = useCallback((step: number) => {
     if (step < CPR_SIMULATION_STEPS.length - 1) {
       setSimulationStep(step + 1)
-    } else {
-      setModuleCompleted(true)
+    } else if (compressionCount >= 30 && !compressionFailed) {
+      setPracticeCompleted(true)
+      if (showQuizResults && quizScore >= 70) setModuleCompleted(true)
     }
-  }, [setModuleCompleted, setSimulationStep])
+  }, [compressionCount, compressionFailed, showQuizResults, quizScore])
 
   const showNotification = useCallback((notification: Omit<BadgeNotification, 'id'> & { id?: string; duration?: number }) => {
     const { id, duration = 5600, ...rest } = notification
@@ -137,11 +151,11 @@ const CPRTraining = () => {
     { id: 'quiz', title: 'Test Knowledge', description: 'CPR Quiz' },
     { id: 'practice', title: 'Practice', description: 'Interactive Simulation' }
   ]), [])
-  const goalPracticeCopy: Record<LearningGoal, string> = {
+  const goalPracticeCopy = useMemo<Record<LearningGoal, string>>(() => ({
     confidence: 'Focus on smooth, steady compressions and calming self-talk for real emergencies.',
     certification: 'Aim for textbook alignment—count aloud and keep cadence between 100 and 120 BPM.',
     refresh: 'Hit the fundamentals quickly: safety sweep, 30 compressions, airway, breaths.'
-  }
+  }), [])
   const cprFlashcards = useMemo<FlashcardItem[]>(() => [
     {
       id: 'scene-safety',
@@ -191,7 +205,7 @@ const CPRTraining = () => {
         <div className="space-y-2">
           <p className="text-lg font-semibold">High-Quality Compressions</p>
           <ul className="text-sm opacity-80 space-y-1 list-disc list-inside">
-            <li>Depth: 5–6 cm (2–2.5 in)</li>
+            <li>Depth: 5–6 cm (2–2.4 in)</li>
             <li>Rate: 100–120 per minute</li>
             <li>Full chest recoil every time</li>
           </ul>
@@ -243,7 +257,7 @@ const CPRTraining = () => {
         <div className="space-y-2">
           <p className="text-lg font-semibold">Key reminder</p>
           <p className="text-sm opacity-80">
-            Shock delivery is automatic. Resume compressions immediately when told—even after a shock.
+            Follow the AED prompts: some devices ask you to press a shock button. Keep everyone clear during analysis or a shock, then immediately resume CPR when prompted.
           </p>
         </div>
       )
@@ -274,7 +288,7 @@ const CPRTraining = () => {
     const badges = [
       {
         id: 'cpr-certified',
-        label: 'CPR Certified',
+        label: 'CPR Practice Complete',
         description: 'Complete every step of the interactive practice.',
         earned: moduleCompleted,
         icon: '🏅',
@@ -289,8 +303,8 @@ const CPRTraining = () => {
       {
         id: 'study-habit',
         label: 'Study Habit',
-        description: 'Enable weekly reminders or bookmark three study topics.',
-        earned: reminderEnabled || reviewBookmarks.length >= 3,
+        description: 'Bookmark three study topics to revisit.',
+        earned: reviewBookmarks.length >= 3,
         icon: '📘',
       },
       {
@@ -313,9 +327,9 @@ const CPRTraining = () => {
       earned: badges.filter((badge) => badge.earned),
       upcoming: badges.filter((badge) => !badge.earned),
     }
-  }, [moduleCompleted, showQuizResults, quizScore, reminderEnabled, reviewBookmarks.length, simulationStep, compressionCount, compressionFailed, sceneViewTime])
+  }, [moduleCompleted, showQuizResults, quizScore, reviewBookmarks.length, simulationStep, compressionCount, compressionFailed, sceneViewTime])
   useEffect(() => {
-    const storedEarned = localStorage.getItem('cpr-earned-badges')
+    const storedEarned = JSON.stringify(readLocal('cpr-earned-badges'))
     if (storedEarned) {
       try {
         const parsed: unknown = JSON.parse(storedEarned)
@@ -327,7 +341,7 @@ const CPRTraining = () => {
       }
     }
 
-    const storedNotified = localStorage.getItem('cpr-notified-badges')
+    const storedNotified = JSON.stringify(readLocal('cpr-notified-badges'))
     if (storedNotified) {
       try {
         const parsed: unknown = JSON.parse(storedNotified)
@@ -356,8 +370,8 @@ const CPRTraining = () => {
     })
 
     earnedBadgeSetRef.current = currentEarned
-    localStorage.setItem('cpr-earned-badges', JSON.stringify(Array.from(currentEarned)))
-    localStorage.setItem('cpr-notified-badges', JSON.stringify(Array.from(notifiedBadgeSetRef.current)))
+    writeLocal('cpr-earned-badges', Array.from(currentEarned))
+    writeLocal('cpr-notified-badges', Array.from(notifiedBadgeSetRef.current))
   }, [cprBadgeGroups.earned, showNotification])
 
   useEffect(() => () => {
@@ -366,8 +380,7 @@ const CPRTraining = () => {
     })
   }, [])
   const badgePanel = (
-    <>
-      {/* Floating Badge Button */}
+    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
       <button
         onClick={() => {
           if (showBadges) {
@@ -380,16 +393,18 @@ const CPRTraining = () => {
             setShowBadges(true)
           }
         }}
-        className="fixed bottom-8 right-8 w-14 h-14 bg-slate-800 text-white rounded-full border border-slate-700 hover:bg-slate-700 transition-all duration-300 flex items-center justify-center"
-        style={{ zIndex: 2147483648 }}
+        className="w-full px-5 py-4 text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-3 text-sm font-semibold"
         aria-label="Toggle achievements"
+        aria-expanded={showBadges}
       >
-        <FontAwesomeIcon icon={faTrophy} className="text-lg" />
+        <FontAwesomeIcon icon={faTrophy} />
+        Your achievements
+        <span className="ml-auto text-xs text-slate-500">{cprBadgeGroups.earned.length} earned</span>
       </button>
 
       {/* Expandable Badge Panel */}
       {showBadges && (
-        <div className={`fixed bottom-24 right-8 w-80 bg-white border border-slate-300 rounded-xl overflow-hidden ${isClosingBadges ? 'animate-slideDown' : 'animate-slideUp'}`} style={{ zIndex: 2147483648 }}>
+        <div className={`border-t border-slate-200 overflow-hidden ${isClosingBadges ? 'animate-slideDown' : 'animate-slideUp'}`}>
           <div className="bg-slate-800 px-5 py-4 flex items-center justify-between border-b border-slate-700">
             <h3 className="text-white font-semibold text-base">Achievements</h3>
             <button
@@ -401,6 +416,7 @@ const CPRTraining = () => {
                 }, 300)
               }}
               className="text-white hover:bg-slate-700 rounded-full w-6 h-6 flex items-center justify-center transition-colors"
+              aria-label="Close achievements"
             >
               <FontAwesomeIcon icon={faXmark} className="text-sm" />
             </button>
@@ -450,7 +466,7 @@ const CPRTraining = () => {
           </div>
         </div>
       )}
-    </>
+    </div>
   )
   const narrate = useCallback((message: string) => {
     if (!voiceEnabled || !speechSupported || !message.trim()) return
@@ -489,57 +505,31 @@ const CPRTraining = () => {
     window.scrollTo({ top: 0, behavior: 'auto' })
   }, [])
 
-  // Load saved progress on component mount
+  // Restore validated quiz evidence; an unfinished timed round starts fresh.
   useEffect(() => {
-    if (hasRestoredPosition) {
-      return
+    const progress = restoreCprProgress(readLocal('cpr-training-progress'), quizQuestions)
+    setCurrentStep(progress.currentStep)
+    setQuizScore(progress.quizScore)
+    setShowQuizResults(progress.showQuizResults)
+    setShowVideo(progress.showVideo)
+    setCurrentQuestion(progress.currentQuestion)
+    setSelectedAnswers(progress.selectedAnswers)
+    setSelectedAnswer(progress.selectedAnswer)
+    setShowQuestionFeedback(progress.showQuestionFeedback)
+    setModuleCompleted(progress.moduleCompleted)
+    setPracticeCompleted(progress.practiceCompleted)
+    if (progress.practiceCompleted) {
+      setSimulationStep(2)
+      setSceneViewTime(3)
+      setHandsPlaced(true)
+      setCompressionCount(30)
     }
-
-    const savedProgressRaw = localStorage.getItem('cpr-training-progress')
-    if (savedProgressRaw) {
-      const progress = JSON.parse(savedProgressRaw) as Record<string, unknown>
-      
-      const storedCurrentStep = typeof progress.currentStep === 'number' ? progress.currentStep : 0
-      const storedQuizScore = typeof progress.quizScore === 'number' ? progress.quizScore : 0
-      const storedCurrentQuestion = typeof progress.currentQuestion === 'number' ? progress.currentQuestion : 0
-      const storedSimulationStep = typeof progress.simulationStep === 'number' ? progress.simulationStep : 0
-
-      setCurrentStep(storedCurrentStep)
-      setQuizScore(storedQuizScore)
-      setShowQuizResults(Boolean(progress.showQuizResults))
-      setShowVideo(Boolean(progress.showVideo))
-      setCurrentQuestion(storedCurrentQuestion)
-      setSelectedAnswers(Array.isArray(progress.selectedAnswers) ? (progress.selectedAnswers as number[]) : [])
-      setSelectedAnswer(typeof progress.selectedAnswer === 'number' ? progress.selectedAnswer : null)
-      setShowQuestionFeedback(Boolean(progress.showQuestionFeedback))
-      setSimulationStep(storedSimulationStep)
-      setModuleCompleted(Boolean(progress.moduleCompleted))
-
-      if (typeof progress.voiceEnabled === 'boolean' && speechSupported) {
-        setVoiceEnabled(progress.voiceEnabled)
-      }
-      if (typeof progress.goal === 'string') {
-        setGoal(progress.goal as LearningGoal)
-      }
-      if (Array.isArray(progress.reviewBookmarks)) {
-        setReviewBookmarks(progress.reviewBookmarks as string[])
-      }
-      if (typeof progress.reminderEnabled === 'boolean') {
-        setReminderEnabled(progress.reminderEnabled)
-      }
-      
-      const storedScroll = typeof progress.scrollY === 'number' ? progress.scrollY : undefined
-      setHasRestoredPosition(true)
-      if (storedScroll !== undefined) {
-        setTimeout(() => {
-          window.scrollTo({ top: storedScroll, behavior: 'smooth' })
-        }, 200)
-      }
-    } else {
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-      setHasRestoredPosition(true)
-    }
-  }, [hasRestoredPosition, speechSupported, steps])
+    setVoiceEnabled(progress.voiceEnabled && speechSupported)
+    setGoal(progress.goal)
+    setReviewBookmarks(progress.reviewBookmarks)
+    setReminderEnabled(progress.reminderEnabled)
+    setHasRestoredPosition(true)
+  }, [speechSupported])
 
   // Save progress whenever key state changes
   useEffect(() => {
@@ -547,6 +537,8 @@ const CPRTraining = () => {
     if (!hasRestoredPosition) return
     
     const progress = {
+      version: 2,
+      practiceCompleted,
       currentStep,
       quizScore,
       showQuizResults,
@@ -563,8 +555,8 @@ const CPRTraining = () => {
       reviewBookmarks,
       reminderEnabled
     }
-    localStorage.setItem('cpr-training-progress', JSON.stringify(progress))
-  }, [currentQuestion, currentStep, goal, hasRestoredPosition, moduleCompleted, quizScore, reminderEnabled, reviewBookmarks, selectedAnswer, selectedAnswers, showQuestionFeedback, showQuizResults, showVideo, simulationStep, steps, voiceEnabled])
+    writeLocal('cpr-training-progress', progress)
+  }, [currentQuestion, currentStep, goal, hasRestoredPosition, practiceCompleted, moduleCompleted, quizScore, reminderEnabled, reviewBookmarks, selectedAnswer, selectedAnswers, showQuestionFeedback, showQuizResults, showVideo, simulationStep, steps, voiceEnabled])
 
   // Save scroll position when user navigates away or scrolls
   useEffect(() => {
@@ -572,11 +564,9 @@ const CPRTraining = () => {
       // Don't save during restoration or navigation
       if (!hasRestoredPosition || isNavigating) return
       
-      const existingProgress = localStorage.getItem('cpr-training-progress')
-      if (existingProgress) {
-        const progress = JSON.parse(existingProgress) as Record<string, unknown>
-        const updated = { ...progress, scrollY: window.scrollY }
-        localStorage.setItem('cpr-training-progress', JSON.stringify(updated))
+      const progress = readLocal('cpr-training-progress')
+      if (progress && typeof progress === 'object') {
+        writeLocal('cpr-training-progress', { ...progress, scrollY: window.scrollY })
       }
     }
 
@@ -604,126 +594,20 @@ const CPRTraining = () => {
     }
   }, [hasRestoredPosition, isNavigating])
 
-  const quizQuestions = useMemo(() => ([
-    {
-      question: "What is the first thing you should do before starting CPR?",
-      options: ["Start chest compressions immediately", "Check if the scene is safe", "Give two rescue breaths", "Shake the victim forcefully"],
-      correct: 1,
-      explanation: "Scene safety is always the priority. You cannot help if you become a victim yourself. Always assess for dangers like traffic, fire, electrical hazards, or violence before approaching.",
-      category: "Scene Safety"
-    },
-    {
-      question: "If the victim does not respond when you check them, what should you do next?",
-      options: ["Start compressions right away", "Call emergency services / ask someone else to call", "Move them into a chair", "Splash water on their face"],
-      correct: 1,
-      explanation: "Calling for professional help is critical. They have advanced equipment and medications. If you're alone, call first, then return to the victim. If others are present, send someone to call while you begin CPR.",
-      category: "Emergency Response"
-    },
-    {
-      question: "Where should your hands be placed for chest compressions on an adult?",
-      options: ["Lower half of the sternum (center of the chest)", "Directly over the ribs on the left side", "Over the stomach", "On the collarbone"],
-      correct: 0,
-      explanation: "The lower half of the sternum (breastbone) is positioned directly over the heart. This location allows for maximum compression of the heart chambers to generate blood flow.",
-      category: "Compression Technique"
-    },
-    {
-      question: "Which part of the hand should you use for compressions?",
-      options: ["Fingertips", "Palm heel", "Entire palm", "Knuckles"],
-      correct: 1,
-      explanation: "The heel of the palm provides the most effective force transfer while reducing the risk of rib fractures. Fingertips and knuckles can cause injuries, while the entire palm reduces compression effectiveness.",
-      category: "Compression Technique"
-    },
-    {
-      question: "How deep should chest compressions be on an adult?",
-      options: ["About 2 cm (1 inch)", "About 4 cm (1.5 inches)", "About 5–6 cm (2–2.5 inches)", "As deep as possible"],
-      correct: 2,
-      explanation: "5-6 cm depth is needed to adequately compress the heart and generate sufficient blood flow to vital organs. Shallower compressions are ineffective, while excessive depth increases injury risk.",
-      category: "Compression Technique"
-    },
-    {
-      question: "What is the recommended compression rate?",
-      options: ["60 per minute", "80–100 per minute", "100–120 per minute", "150 per minute"],
-      correct: 2,
-      explanation: "100-120 compressions per minute optimizes cardiac output. Slower rates don't generate enough blood flow, while faster rates don't allow adequate heart filling between compressions.",
-      category: "Compression Technique"
-    },
-    {
-      question: "After how many chest compressions should you give rescue breaths (if trained)?",
-      options: ["Every 10 compressions", "Every 15 compressions", "Every 20 compressions", "Every 30 compressions"],
-      correct: 3,
-      explanation: "The 30:2 ratio maximizes the time spent on compressions while providing adequate ventilation. Shorter compression cycles reduce the effectiveness of blood circulation.",
-      category: "CPR Cycles"
-    },
-    {
-      question: "How many rescue breaths should be given after a set of compressions?",
-      options: ["1", "2", "5", "10"],
-      correct: 1,
-      explanation: "Two rescue breaths provide adequate oxygen without taking too much time away from compressions. Each breath should make the chest visibly rise.",
-      category: "Rescue Breathing"
-    },
-    {
-      question: "What should you do before giving a rescue breath?",
-      options: ["Tilt the head back and lift the chin", "Push down on the stomach", "Cover the victim's eyes", "Pat the victim's back"],
-      correct: 0,
-      explanation: "Head tilt-chin lift opens the airway by moving the tongue away from the back of the throat. This is essential for effective ventilation.",
-      category: "Rescue Breathing"
-    },
-    {
-      question: "What should you do after each chest compression?",
-      options: ["Keep pressure on the chest", "Allow full chest recoil (let chest rise)", "Tap the shoulders", "Pause for 5 seconds"],
-      correct: 1,
-      explanation: "Complete chest recoil allows the heart to fill with blood between compressions. Leaning on the chest prevents proper filling and reduces the effectiveness of the next compression.",
-      category: "Compression Technique"
-    },
-    {
-      question: "Which of the following is a key sign that CPR is needed?",
-      options: ["The victim is snoring", "The victim has shallow but steady breathing", "The victim is not breathing normally / gasping", "The victim's eyes are open but they can't talk"],
-      correct: 2,
-      explanation: "Absent or abnormal breathing (including agonal gasps) indicates cardiac arrest. Snoring indicates partial airway obstruction but some air movement. Shallow but steady breathing may not require CPR.",
-      category: "Recognition"
-    },
-    {
-      question: "Why is minimizing interruptions in compressions important?",
-      options: ["It keeps rescuers from getting tired", "It helps blood continue flowing to the brain and heart", "It makes the victim breathe faster", "It prevents chest injuries"],
-      correct: 1,
-      explanation: "Continuous compressions maintain coronary and cerebral perfusion pressure. Even brief interruptions cause significant drops in blood flow, reducing survival chances.",
-      category: "Compression Quality"
-    },
-    {
-      question: "When should CPR be stopped?",
-      options: ["When the victim starts breathing normally again", "When an AED is available and ready", "When professional help takes over", "All of the above"],
-      correct: 3,
-      explanation: "CPR should continue until the victim recovers, advanced help arrives, or you become too exhausted. An AED doesn't replace CPR but works with it - resume compressions immediately after shock delivery.",
-      category: "CPR Management"
-    },
-    {
-      question: "What is the purpose of an AED during CPR?",
-      options: ["It keeps oxygen in the lungs", "It gives an electric shock to restore heart rhythm", "It replaces chest compressions", "It pumps air into the lungs automatically"],
-      correct: 1,
-      explanation: "AEDs analyze heart rhythm and deliver shock therapy for certain lethal arrhythmias (like ventricular fibrillation). The shock can restore a normal rhythm, but CPR must continue to circulate blood.",
-      category: "AED Use"
-    },
-    {
-      question: "Which statement about CPR is TRUE?",
-      options: ["Only doctors should perform CPR", "CPR guarantees survival", "CPR can double or triple the chance of survival", "You should stop CPR after one minute if no response"],
-      correct: 2,
-      explanation: "Immediate bystander CPR significantly improves survival rates in cardiac arrest. Anyone can learn and perform CPR. While it doesn't guarantee survival, it maintains vital organ perfusion until advanced care arrives.",
-      category: "CPR Effectiveness"
-    }
-  ]), [])
+
 
   const quizCategories = useMemo(() => {
     const set = new Set<string>()
     quizQuestions.forEach((question) => set.add(question.category))
     return Array.from(set)
-  }, [quizQuestions])
+  }, [])
 
   const dailyChallenge = useMemo(() => {
     if (quizQuestions.length === 0) return null
     const seed = new Date().toDateString().split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
     const index = seed % quizQuestions.length
     return quizQuestions[index]
-  }, [quizQuestions])
+  }, [])
 
   useEffect(() => {
     setShowDailyAnswer(false)
@@ -770,7 +654,7 @@ const CPRTraining = () => {
   }, [currentStep, narrate, simulationStep, steps, studyMode, voiceEnabled])
 
   const nextStep = () => {
-    if (currentStep < steps.length - 1) {
+    if (currentStep < steps.length - 1 && (currentStep !== 2 || (showQuizResults && quizScore >= 70))) {
       setIsNavigating(true)
       setCurrentStep(currentStep + 1)
       // Use setTimeout to ensure state update happens first
@@ -813,7 +697,7 @@ const CPRTraining = () => {
 
     if (currentQuestion + 1 < quizQuestions.length) {
       setCurrentQuestion(currentQuestion + 1)
-      setSelectedAnswer(newAnswers[currentQuestion + 1] || null)
+      setSelectedAnswer(newAnswers[currentQuestion + 1] ?? null)
     } else {
       // Calculate final score
       let correct = 0
@@ -824,18 +708,21 @@ const CPRTraining = () => {
       })
       setQuizScore(Math.round((correct / quizQuestions.length) * 100))
       setShowQuizResults(true)
+      if (practiceCompleted && correct / quizQuestions.length >= 0.7) setModuleCompleted(true)
       // Stay in quiz step but show results - don't auto-advance
     }
   }
 
   const handlePrevQuestion = () => {
     if (currentQuestion > 0) {
+      setShowQuestionFeedback(false)
       setCurrentQuestion(currentQuestion - 1)
-      setSelectedAnswer(selectedAnswers[currentQuestion - 1] || null)
+      setSelectedAnswer(selectedAnswers[currentQuestion - 1] ?? null)
     }
   }
 
   const handleRetakeQuiz = () => {
+    setModuleCompleted(false)
     setCurrentQuestion(0)
     setSelectedAnswer(null)
     setSelectedAnswers([])
@@ -919,7 +806,7 @@ const CPRTraining = () => {
       default:
         return 'Exploring the CPR training module.'
     }
-  }, [compressionCount, compressionRate, currentQuestion, currentStep, quizQuestions, simulationStep, steps, studyMode])
+  }, [compressionCount, compressionRate, currentQuestion, currentStep, simulationStep, steps, studyMode])
 
   const currentQuestionPrompt = currentStep === 2 && quizQuestions[currentQuestion]
     ? quizQuestions[currentQuestion].question
@@ -943,7 +830,7 @@ const CPRTraining = () => {
 
     const containerClass = isOverlay
       ? 'w-full lg:w-96 flex-shrink-0 flex flex-col h-full px-6 py-6'
-      : 'w-64 flex-shrink-0'
+      : 'w-full min-w-0'
 
     const wrapperClass = isOverlay
       ? 'flex-1 flex flex-col rounded-2xl overflow-hidden'
@@ -970,7 +857,7 @@ const CPRTraining = () => {
             </div>
             {reminderEnabled && (
               <div className="text-[0.65rem] text-slate-500 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2">
-                Weekly review reminders are on. We'll surface your saved topics the next time you visit.
+                Your review topics are saved on this device for your next visit.
               </div>
             )}
           </div>
@@ -990,6 +877,8 @@ const CPRTraining = () => {
               setCompressionTimes={setCompressionTimes}
               feedbackLog={feedbackLog}
               onReset={() => {
+                setPracticeCompleted(false)
+                setModuleCompleted(false)
                 setSimulationStep(0)
                 setSceneViewTime(0)
                 setHandsPlaced(false)
@@ -1025,93 +914,6 @@ const CPRTraining = () => {
     simulationStep
   ])
 
-  const fullscreenOverlay = useMemo(() => {
-    if (!isSimulationFullscreen || typeof document === 'undefined') return null
-
-    return createPortal(
-      <div
-        className="fixed inset-0 z-[10000] bg-white overflow-auto"
-        onClick={(event) => {
-          if (event.target === event.currentTarget) {
-            setSimulationFullscreen(false)
-          }
-        }}
-      >
-        <div className="flex h-full w-full flex-col lg:flex-row">
-          <div className="flex-1 flex flex-col">
-            <div className="flex items-center justify-between px-6 lg:px-10 py-6 border-b border-slate-200 bg-white">
-              <h2 className="text-xl lg:text-2xl font-semibold text-slate-800">Interactive CPR Practice</h2>
-              <button
-                onClick={() => setSimulationFullscreen(false)}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
-                type="button"
-              >
-                <FontAwesomeIcon icon={faCompress} />
-                Exit Full Screen
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-hidden px-6 lg:px-10 py-6">
-              <div className="h-full w-full rounded-2xl bg-white">
-                <CPRSimulation
-                  currentStep={simulationStep}
-                  onStepComplete={handleSimulationStepComplete}
-                  sceneViewTime={sceneViewTime}
-                  setSceneViewTime={setSceneViewTime}
-                  handsPlaced={handsPlaced}
-                  setHandsPlaced={setHandsPlaced}
-                  compressionCount={compressionCount}
-                  setCompressionCount={setCompressionCount}
-                  compressionRate={compressionRate}
-                  setCompressionRate={setCompressionRate}
-                  compressionFailed={compressionFailed}
-                  setCompressionFailed={setCompressionFailed}
-                  compressionTimes={compressionTimes}
-                  setCompressionTimes={setCompressionTimes}
-                  onFeedback={handleCompressionFeedback}
-                  isFullscreen
-                />
-              </div>
-            </div>
-
-            {moduleCompleted && (
-              <div className="px-6 lg:px-10 pb-8">
-                <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl p-4">
-                  <p>
-                    <strong>Congratulations!</strong> You have successfully completed the CPR practice simulation. You've learned all the essential steps for performing CPR.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {renderPracticeSidebar('overlay')}
-        </div>
-      </div>,
-      document.body
-    )
-  }, [
-    compressionCount,
-    compressionFailed,
-    compressionRate,
-    compressionTimes,
-    handleSimulationStepComplete,
-    handsPlaced,
-    isSimulationFullscreen,
-    moduleCompleted,
-    sceneViewTime,
-    setCompressionCount,
-    setCompressionFailed,
-    setCompressionRate,
-    setCompressionTimes,
-    setHandsPlaced,
-    setSceneViewTime,
-    simulationStep,
-    handleCompressionFeedback,
-    renderPracticeSidebar,
-    setSimulationFullscreen
-  ])
-
   const renderStepContent = () => {
     switch (steps[currentStep].id) {
       case 'video':
@@ -1120,8 +922,8 @@ const CPRTraining = () => {
             <h2 className="text-4xl font-bold text-slate-800 mb-8">CPR Video Tutorial</h2>
             <div className="image-box mb-8">
               {!showVideo ? (
-                <div className="bg-slate-900 rounded-2xl aspect-video flex items-center justify-center cursor-pointer"
-                     onClick={() => setShowVideo(true)}>
+                <button type="button" className="w-full bg-slate-900 rounded-2xl aspect-video flex items-center justify-center"
+                     onClick={() => setShowVideo(true)} aria-label="Play CPR training video">
                   <div className="text-white text-center">
                     <div className="text-6xl mb-4 hover:scale-110 transition-transform duration-300">
                       <FontAwesomeIcon icon={faPlay} />
@@ -1129,7 +931,7 @@ const CPRTraining = () => {
                     <p className="text-xl font-medium">CPR Training Video</p>
                     <p className="text-slate-300 mt-2">Click to play video</p>
                   </div>
-                </div>
+                </button>
               ) : (
                 <div className="aspect-video rounded-2xl overflow-hidden">
                   <iframe
@@ -1202,7 +1004,7 @@ const CPRTraining = () => {
                 <div className="bg-slate-50 border-l-4 border-slate-400 p-6 rounded-r-lg">
                   <h3 className="text-xl font-bold text-slate-800 mb-4">2. Checking Breathing & Signs of Cardiac Arrest</h3>
                   <ul className="space-y-2 text-slate-700">
-                    <li>• Look, listen, and feel for normal breathing</li>
+                    <li>• Check responsiveness and normal breathing for no more than 10 seconds</li>
                     <li>• Agonal gasps (gasping, irregular breaths) are not normal breathing</li>
                     <li>• <strong>No response + no normal breathing = start CPR immediately</strong></li>
                   </ul>
@@ -1229,10 +1031,10 @@ const CPRTraining = () => {
                     <div>
                       <h4 className="font-semibold">Technique:</h4>
                       <ul className="ml-4 space-y-1">
-                        <li>• <strong>Depth:</strong> compress 5–6 cm (2–2.5 inches) in adults</li>
+                        <li>• <strong>Depth:</strong> compress 5–6 cm (2–2.4 inches) in adults</li>
                         <li>• <strong>Rate:</strong> about 100–120 compressions per minute</li>
                         <li>• Let the chest fully recoil after each compression</li>
-                        <li>• <strong>Avoid interruptions—minimize pauses at all costs</strong></li>
+                        <li>• <strong>Minimize interruptions; pause when an AED tells you to stand clear</strong></li>
                       </ul>
                     </div>
                   </div>
@@ -1263,8 +1065,8 @@ const CPRTraining = () => {
                     <p>• <strong>Standard cycle: 30 compressions : 2 breaths</strong></p>
                     <p>• Continue cycles until:</p>
                     <ul className="ml-4 space-y-1">
-                      <li>- Victim shows signs of life (normal breathing / movement)</li>
-                      <li>- An AED is available and ready</li>
+                      <li>- The person begins breathing normally</li>
+                      <li>- The scene becomes unsafe</li>
                       <li>- Professional rescuers take over</li>
                       <li>- You are too exhausted to continue</li>
                     </ul>
@@ -1280,7 +1082,7 @@ const CPRTraining = () => {
                     <p>• As soon as an AED arrives:</p>
                     <ul className="ml-4 space-y-1">
                       <li>- Turn it on, follow voice prompts</li>
-                      <li>- Attach pads as instructed</li>
+                      <li>- Attach pads as shown and keep everyone clear during analysis and shocks</li>
                       <li>- Resume CPR immediately after shock is delivered (or if advised)</li>
                     </ul>
                   </div>
@@ -1322,7 +1124,7 @@ const CPRTraining = () => {
                   </div>
                   {reminderEnabled && (
                     <div className="text-xs text-slate-500 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2">
-                      Weekly review reminders are on. We'll surface your saved topics the next time you visit.
+                      Your review topics are saved on this device for your next visit.
                     </div>
                   )}
                   <div className="flex flex-wrap gap-2">
@@ -1381,7 +1183,7 @@ const CPRTraining = () => {
                   </div>
                   {reminderEnabled && (
                     <div className="text-xs text-slate-500 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2">
-                      Weekly review reminders are on. We'll surface your saved topics the next time you return.
+                      Your review topics are saved on this device for your next visit.
                     </div>
                   )}
                   <div className="flex flex-wrap gap-2">
@@ -1466,6 +1268,7 @@ const CPRTraining = () => {
                           <button
                             key={i}
                             onClick={() => !showQuestionFeedback && handleAnswerSelect(i)}
+                            aria-pressed={selectedAnswer === i}
                             disabled={showQuestionFeedback}
                             className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${buttonClass} ${
                               showQuestionFeedback ? 'cursor-default' : ''
@@ -1764,25 +1567,23 @@ const CPRTraining = () => {
       case 'practice':
         return (
           <div>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-slate-800">Interactive CPR Practice</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Interactive CPR Practice</h2>
               <button
-                onClick={() => {
-                  setSimulationFullscreen(true)
-                  setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100)
-                }}
+                onClick={() => setSimulationFullscreen(value => !value)}
                 className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
                 type="button"
               >
-                <FontAwesomeIcon icon={faExpand} />
-                Full Screen
+                <FontAwesomeIcon icon={isSimulationFullscreen ? faCompress : faExpand} />
+                {isSimulationFullscreen ? 'Exit Full Screen' : 'Full Screen'}
               </button>
             </div>
 
-            {!isSimulationFullscreen && (
-              <>
+            <>
                 <div className="transition-all duration-300">
+                  <Suspense fallback={<div className="h-96 grid place-items-center text-sm text-slate-500" role="status">Preparing the practice studio…</div>}>
                   <CPRSimulation
+                    isFullscreen={isSimulationFullscreen}
                     currentStep={simulationStep}
                     onStepComplete={handleSimulationStepComplete}
                     sceneViewTime={sceneViewTime}
@@ -1799,17 +1600,17 @@ const CPRTraining = () => {
                     setCompressionTimes={setCompressionTimes}
                     onFeedback={handleCompressionFeedback}
                   />
+                  </Suspense>
                 </div>
 
                 {moduleCompleted ? (
                   <div className="bg-green-50 border-l-4 border-green-400 p-4 rounded-r-lg mt-6">
                     <p className="text-green-800">
-                      <strong>Congratulations!</strong> You have successfully completed the CPR practice simulation. You've learned all the essential steps for performing CPR.
+                      <strong>Congratulations!</strong> You completed the knowledge check and rhythm practice. Keep practicing with a qualified instructor to build hands-on skills.
                     </p>
                   </div>
                 ) : null}
-              </>
-            )}
+            </>
           </div>
         )
 
@@ -1818,241 +1619,55 @@ const CPRTraining = () => {
     }
   }
 
+  const canContinue = currentStep !== 2 || (showQuizResults && quizScore >= 70)
   return (
-    <div className="min-h-[120vh] bg-slate-50/30">
-      {notifications.length > 0 && (
-        <div className="badge-toast-container">
-          {notifications.map((toast) => (
-            <div key={toast.id} className="badge-toast">
-              <div className="badge-toast-icon">{toast.icon}</div>
-              <div className="badge-toast-content">
-                <div className="badge-toast-title">{toast.label}</div>
-                {toast.message && <div className="badge-toast-message">{toast.message}</div>}
-              </div>
+    <div className="training-page min-h-screen bg-slate-50/30">
+      <header className="container pt-6 pb-8" inert={isSimulationFullscreen}>
+        <div className="training-back"><BackButton elevation="baseline" /></div>
+        <div className="training-header mt-5">
+          <div><p className="text-xs uppercase tracking-[0.18em] text-slate-500 mb-2">Life-saving skills · Adult CPR</p>
+            <h1 className="text-3xl font-bold text-slate-800">CPR Training Module</h1>
+            <p className="text-slate-500 mt-2">Learn the sequence. Find your rhythm. Build your confidence.</p>
+          </div>
+          <div className="w-44"><p className="text-xs text-slate-500 mb-2">{moduleCompleted ? 'Module completed' : `Step ${currentStep + 1} of 4 · ${steps[currentStep].title}`}</p>
+            <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden" role="progressbar" aria-label="Module progress" aria-valuenow={moduleCompleted ? 100 : currentStep * 25} aria-valuemin={0} aria-valuemax={100}>
+              <div className="h-full bg-slate-700 rounded-full transition-all" style={{ width: `${moduleCompleted ? 100 : currentStep * 25}%` }} />
             </div>
+          </div>
+        </div>
+        <nav aria-label="Training stages" className="training-stages mt-7">
+          {steps.map((step, index) => (
+            <button key={step.id} type="button" aria-current={currentStep === index ? 'step' : undefined} disabled={index > currentStep && !(index === currentStep + 1 && canContinue)} onClick={() => { setCurrentStep(index); window.scrollTo({top: 0}) }} className={index === currentStep ? 'is-active' : ''}>
+              <span>0{index + 1}</span><strong>{['Learn', 'Key points', 'Knowledge check', 'Practice'][index]}</strong>
+            </button>
           ))}
+        </nav>
+      </header>
+      <div className={isSimulationFullscreen ? 'fixed inset-0 z-50 overflow-y-auto bg-slate-50 p-4 sm:p-8' : 'container pb-16'} role={isSimulationFullscreen ? 'dialog' : undefined} aria-modal={isSimulationFullscreen ? true : undefined} aria-label={isSimulationFullscreen ? 'CPR practice fullscreen' : undefined}>
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-6 items-start">
+          <main className="card-module min-w-0">
+            <div className="p-5 sm:p-8">{renderStepContent()}</div>
+            {!isSimulationFullscreen && <div className="px-5 sm:px-8 pb-7">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-6">
+                {currentStep > 0 ? <button onClick={prevStep} className="btn-secondary">← Previous stage</button> : <Link to="/modules" className="btn-secondary">All modules</Link>}
+                {currentStep < 3 ? <button onClick={nextStep} disabled={!canContinue} className="btn-primary">Continue →</button> : moduleCompleted ? <Link to="/modules" className="btn-primary">Complete Module →</Link> : <span className="text-xs text-slate-500 max-w-52">Complete the practice to finish this module.</span>}
+              </div>
+              {!canContinue && <p className="text-xs text-slate-500 mt-3">Pass the knowledge check with at least 70% to unlock practice.</p>}
+            </div>}
+          </main>
+          <aside className="min-w-0 space-y-5">
+            {currentStep === 3 ? renderPracticeSidebar('normal') : <SimpleChatbot moduleContext={moduleContext} />}
+            {!isSimulationFullscreen && badgePanel}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 text-xs leading-relaxed text-slate-500">
+              <p className="font-semibold text-slate-700 mb-2">Practice with perspective</p>
+              <p>This adult CPR module builds knowledge and rhythm. It does not measure compression depth or provide CPR certification. In an emergency, call your local emergency number (911 in the US) and follow the dispatcher.</p>
+              <a className="block underline underline-offset-4 mt-3" href="https://www.redcross.org/take-a-class/cpr/performing-cpr/cpr-steps" target="_blank" rel="noreferrer">Red Cross · Adult CPR steps ↗</a>
+              <a className="block underline underline-offset-4 mt-2" href="https://cpr.heart.org/en/resuscitation-science/cpr-and-ecc-guidelines/adult-basic-life-support" target="_blank" rel="noreferrer">AHA · 2025 CPR guidance ↗</a>
+            </div>
+          </aside>
         </div>
-      )}
-
-      {badgePanel}
-      {/* Practice step with special layout */}
-      {currentStep === 3 ? (
-        <div className="min-h-[130vh] bg-slate-50/30" style={{backgroundColor: '#f8fafc'}}>
-          <BackButton elevation={isSimulationFullscreen ? 'baseline' : 'overlay'} />
-          {/* Module Header */}
-          <div className="mb-10" style={{ marginTop: '-3.2rem', position: 'relative', zIndex: isSimulationFullscreen ? 1 : 2147483646 }}>
-            <div className="container mx-auto py-4">
-              <div className="flex items-start justify-between gap-6">
-                {/* Title Section */}
-                <div>
-                  <h1 className="text-3xl font-bold text-slate-800">CPR Training Module</h1>
-                  <p className="text-muted">{steps[currentStep].title}</p>
-                </div>
-
-                {/* Progress Bar */}
-                <div className="text-right">
-                  <div className="text-sm text-muted mb-2">Progress</div>
-                  <div className="w-48 bg-slate-200 rounded-full h-3">
-                    <div
-                      className="bg-slate-700 h-3 rounded-full transition-all duration-300"
-                      style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
-                    ></div>
-                  </div>
-                  <div className="text-xs text-muted mt-1">
-                    Step {currentStep + 1} of {steps.length}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Main Content with two-column layout */}
-          <div className="container mx-auto py-12 mt-8 mb-32">
-            <div className="max-w-7xl mx-auto">
-              <div className="flex gap-6">
-              {/* Center content area */}
-              <div className="flex-1" style={{ maxWidth: isSimulationFullscreen ? '100%' : '75%' }}>
-                <div className="card-module">
-                  <div className="p-12">
-                    {renderStepContent()}
-                  </div>
-
-                  {/* Navigation */}
-                  <div className="px-12 pb-12">
-                    <div className="flex justify-between items-center pt-8 border-t border-slate-100">
-                      <div className="flex space-x-3">
-                        {currentStep > 0 && (
-                          <button onClick={prevStep} className="btn-secondary">
-                            ← Previous
-                          </button>
-                        )}
-                        <Link
-                          to="/"
-                          className="btn-secondary"
-                          onClick={() => {
-                            setTimeout(() => {
-                              window.scrollTo({ top: 0, behavior: 'smooth' })
-                            }, 100)
-                          }}
-                        >
-                          Back to Home
-                        </Link>
-                      </div>
-
-                      {currentStep < steps.length - 1 ? (
-                        <button
-                          onClick={nextStep}
-                          className="btn-primary"
-                        >
-                          Continue →
-                        </button>
-                      ) : (
-                        <Link
-                          to="/"
-                          className="btn-primary"
-                          onClick={() => {
-                            // Mark module as completed when user clicks Complete Module
-                            if (currentStep === 3) {
-                              setModuleCompleted(true)
-                              // Also save to localStorage immediately
-                              const existingProgress = localStorage.getItem('cpr-training-progress')
-                              if (existingProgress) {
-                                const progress = JSON.parse(existingProgress)
-                                progress.moduleCompleted = true
-                                localStorage.setItem('cpr-training-progress', JSON.stringify(progress))
-                              }
-                            }
-                          }}
-                        >
-                          Complete Module
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right sidebar - Instructions */}
-              {renderPracticeSidebar('normal')}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : (
-        // Normal layout for other steps
-        <div>
-          <BackButton elevation={isSimulationFullscreen ? 'baseline' : 'overlay'} />
-          {/* Module Header */}
-          <div className="mb-10" style={{ marginTop: '-3.2rem', position: 'relative', zIndex: isSimulationFullscreen ? 1 : 2147483646 }}>
-            <div className="container mx-auto py-4">
-              <div className="flex items-start justify-between">
-                {/* Title Section */}
-                <div>
-                  <h1 className="text-3xl font-bold text-slate-800">CPR Training Module</h1>
-                  <p className="text-muted">{steps[currentStep].title}</p>
-                </div>
-
-                {/* Progress Bar */}
-                <div className="text-right ml-auto">
-                  <div className="text-sm text-muted mb-2">Progress</div>
-                  <div className="w-48 bg-slate-200 rounded-full h-3">
-                    <div
-                      className="bg-slate-700 h-3 rounded-full transition-all duration-300"
-                      style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
-                    ></div>
-                  </div>
-                  <div className="text-xs text-muted mt-1">
-                    Step {currentStep + 1} of {steps.length}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Main Content */}
-          <div className="container mx-auto py-12 mt-8 mb-32">
-            <div className="max-w-7xl mx-auto">
-              <div className="flex gap-6">
-                {/* Main Content Area */}
-                <div className="flex-1" style={{ position: 'relative', zIndex: 1 }}>
-                <div className="card-module">
-                  <div className="p-12">
-                    {renderStepContent()}
-                  </div>
-                
-                    {/* Navigation */}
-                    <div className="px-12 pb-12">
-                      <div className="flex justify-between items-center pt-8 border-t border-slate-100">
-                        <div className="flex space-x-3">
-                          {currentStep > 0 && (
-                            <button onClick={prevStep} className="btn-secondary">
-                              ← Previous
-                            </button>
-                          )}
-                          <Link 
-                            to="/" 
-                            className="btn-secondary"
-                            onClick={() => {
-                              setTimeout(() => {
-                                window.scrollTo({ top: 0, behavior: 'smooth' })
-                              }, 100)
-                            }}
-                          >
-                            Back to Home
-                          </Link>
-                        </div>
-                        
-                        {currentStep < steps.length - 1 ? (
-                          <button 
-                            onClick={nextStep} 
-                            className="btn-primary"
-                          >
-                            Continue →
-                          </button>
-                        ) : (
-                          <Link 
-                            to="/" 
-                            className="btn-primary"
-                            onClick={() => {
-                              // Mark module as completed when user clicks Complete Module
-                              if (currentStep === 3) {
-                                setModuleCompleted(true)
-                                // Also save to localStorage immediately
-                                const existingProgress = localStorage.getItem('cpr-training-progress')
-                                if (existingProgress) {
-                                  const progress = JSON.parse(existingProgress)
-                                  progress.moduleCompleted = true
-                                  localStorage.setItem('cpr-training-progress', JSON.stringify(progress))
-                                }
-                              }
-                            }}
-                          >
-                            Complete Module 
-                          </Link>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* AI Chatbot Sidebar */}
-                {!isSimulationFullscreen && (
-                  <div className="w-80 flex-shrink-0" style={{ position: 'relative', zIndex: 9999999, pointerEvents: 'auto' }}>
-                    <SimpleChatbot
-                      moduleContext={moduleContext}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-          
-          {/* Bottom spacer for extra scrolling space */}
-          <div className="h-20"></div>
-        </div>
-      )}
-
-      {fullscreenOverlay}
+      </div>
+      {notifications.length > 0 && <div className="badge-toast-container" role="status">{notifications.map(toast => <div key={toast.id} className="badge-toast"><div className="badge-toast-icon">{toast.icon}</div><div className="badge-toast-content"><div className="badge-toast-title">{toast.label}</div><div className="badge-toast-message">{toast.message}</div></div></div>)}</div>}
     </div>
   )
 }

@@ -1,8 +1,6 @@
 // API utility functions for campus first aid app
 
-const API_BASE_URL = import.meta.env.PROD
-  ? '' // Use relative URLs in production (Vercel handles routing)
-  : 'http://localhost:5174' // Development server
+const API_BASE_URL = '' // Vite proxies /api locally; production uses the same origin.
 
 export interface TrainingModule {
   id: string

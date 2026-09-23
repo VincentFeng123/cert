@@ -76,7 +76,6 @@ const withTimestamp = <T extends Omit<TelemetryEvent, 'timestamp'>>(event: T): T
 const track = (event: TelemetryEvent) => {
   if (import.meta.env.DEV) {
     // Useful during development to verify telemetry emits
-    // eslint-disable-next-line no-console
     console.debug('[CPR Telemetry]', event)
   }
   subscribers.forEach((listener) => {
