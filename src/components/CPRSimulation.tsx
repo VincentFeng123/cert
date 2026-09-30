@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import TrainingMannequin from './cpr/TrainingMannequin'
 import FlatMannequin from './cpr/FlatMannequin'
+import StudioLighting from './three/StudioLighting'
 import { CPR_SIMULATION_STEPS } from '../lib/cpr-steps'
 import { assessCompressionRhythm, COMPRESSION_TARGET_COUNT, getLiveCompressionRate } from '../lib/cpr-rhythm'
 
@@ -282,15 +283,14 @@ export default function CPRSimulation({
               shadows
               dpr={[1, 1.75]}
               camera={{ position: CPR_SIMULATION_STEPS[0].cameraPosition, fov: 39, near: 0.1, far: 100 }}
-              gl={{ antialias: true, powerPreference: 'high-performance' }}
+              gl={{ antialias: true, powerPreference: 'high-performance', toneMapping: THREE.AgXToneMapping, toneMappingExposure: 1.05 }}
               fallback={fallback}
               aria-label="Interactive adult CPR training mannequin. Drag to rotate and scroll or pinch to zoom. Use the practice button below to place hands or tap."
               style={{ touchAction: 'none' }}
             >
               <color attach="background" args={['#e9eeeb']} />
-              <hemisphereLight args={['#ffffff', '#8c9c96', 2.3]} />
-              <directionalLight position={[-3, 6, 4]} intensity={3.2} castShadow shadow-mapSize={[1024, 1024]} shadow-camera-left={-3} shadow-camera-right={3} shadow-camera-top={3} shadow-camera-bottom={-3} shadow-normalBias={0.025} shadow-bias={-0.0002} />
-              <directionalLight position={[3, 2, -4]} intensity={1.3} color="#d7ecf5" />
+              <fog attach="fog" args={['#e9eeeb', 6.5, 13]} />
+              <StudioLighting keyPosition={[-3, 6, 4]} extent={3} keyIntensity={2.3} />
               <TrainingMannequin currentStep={currentStep} handsPlaced={handsPlaced} lastTap={lastTap} onActivate={activate} disabled={controlsDisabled} />
               <CameraController currentStep={currentStep} resetKey={resetKey} overhead={overhead} onExplore={beginReview} onContextLost={handleContextLost} />
             </Canvas>

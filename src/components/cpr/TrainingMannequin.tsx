@@ -2,9 +2,14 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { RoundedBox } from '@react-three/drei'
 import * as THREE from 'three'
+import { Hand, Head } from '../three/Human'
+import { useHumanMaterials } from '../three/humanMaterials'
+import { orientHand } from '../three/humanGeometry'
+import { pebbleBump, woodFloorTexture } from '../three/textures'
 
 const SILICONE = '#d9b29b'
-const GLOVE = '#8bbacd'
+const GLOVE_SCALE = 2.55
+const GLOVE_COLOR = '#5d9fd6'
 const TARGET_HEIGHT = 0.637
 
 function createTorso() {
@@ -53,27 +58,21 @@ function createTorso() {
   return { geometry, restPositions: new Float32Array(positions), weights }
 }
 
-function Hand({ upper = false }: { upper?: boolean }) {
-  return (
-    <group position={[0, upper ? 0.057 : 0, 0]} rotation={[0, upper ? Math.PI / 2 : 0, 0]}>
-      <RoundedBox args={[0.18, 0.054, 0.2]} radius={0.025} smoothness={3} castShadow>
-        <meshStandardMaterial color={GLOVE} roughness={0.8} />
-      </RoundedBox>
-      {[-0.063, -0.021, 0.021, 0.063].map((x, index) => (
-        <mesh key={x} position={[x, 0.012, -0.12]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <capsuleGeometry args={[0.019, index === 0 || index === 3 ? 0.07 : 0.1, 6, 10]} />
-          <meshStandardMaterial color={GLOVE} roughness={0.8} />
-        </mesh>
-      ))}
-      <mesh position={[0.09, 0.009, 0.025]} rotation={[Math.PI / 2, 0.3, -0.5]} castShadow>
-        <capsuleGeometry args={[0.022, 0.065, 6, 10]} />
-        <meshStandardMaterial color={GLOVE} roughness={0.8} />
-      </mesh>
-      <RoundedBox args={[0.13, 0.055, 0.12]} position={[0, 0.006, 0.13]} radius={0.018} smoothness={3} castShadow>
-        <meshStandardMaterial color="#77a7bd" roughness={0.85} />
-      </RoundedBox>
-    </group>
-  )
+// Rescuer's hands seen from their kneeling side (+x): heel of the lower hand on
+// the sternum, fingers pointing across the chest, upper hand interlaced on top.
+const FINGERS_ACROSS = new THREE.Vector3(-1, 0, 0.08)
+const FINGERS_UPPER = new THREE.Vector3(-1, 0, -0.18)
+const PALM_DOWN = new THREE.Vector3(0, -1, 0)
+const LOWER_HAND = new THREE.Quaternion()
+const UPPER_HAND = new THREE.Quaternion()
+orientHand(LOWER_HAND, FINGERS_ACROSS, PALM_DOWN, 1)
+orientHand(UPPER_HAND, FINGERS_UPPER, PALM_DOWN, -1)
+
+function GlovedHands({ glove }: { glove: THREE.Material }) {
+  return <group>
+    <group position={[0.13, 0, 0]} quaternion={LOWER_HAND} scale={GLOVE_SCALE}><Hand side={1} pose="open" material={glove} /></group>
+    <group position={[0.1, 0.064, 0.008]} quaternion={UPPER_HAND} scale={GLOVE_SCALE}><Hand side={-1} pose="cup" material={glove} /></group>
+  </group>
 }
 
 export default function TrainingMannequin({
@@ -90,6 +89,11 @@ export default function TrainingMannequin({
   disabled: boolean
 }) {
   const torso = useMemo(createTorso, [])
+  const materials = useHumanMaterials({ skin: SILICONE, hair: SILICONE, hairStyle: 'none', shirt: GLOVE_COLOR, pants: GLOVE_COLOR, shoes: GLOVE_COLOR })
+  const glove = useMemo(() => new THREE.MeshStandardMaterial({ color: GLOVE_COLOR, roughness: 0.38 }), [])
+  const matBump = useMemo(() => pebbleBump([4, 7]), [])
+  const floor = useMemo(() => woodFloorTexture([12, 12], ['#d2b48f', '#c9a983', '#d9bd9a', '#c4a27c', '#cfb08b']), [])
+  useEffect(() => () => glove.dispose(), [glove])
   const invalidate = useThree(state => state.invalidate)
   const contactRef = useRef<THREE.Group>(null)
   const lastDepthRef = useRef(-1)
@@ -115,49 +119,22 @@ export default function TrainingMannequin({
   return (
     <group>
       <RoundedBox args={[1.8, 0.2, 2.9]} scale={[1, 0.5, 1]} radius={0.08} smoothness={4} position={[0, -0.075, -0.23]} receiveShadow castShadow>
-        <meshStandardMaterial color="#344954" roughness={0.95} />
+        <meshStandardMaterial color="#2f4550" roughness={0.9} bumpMap={matBump} bumpScale={0.8} />
       </RoundedBox>
-      <RoundedBox args={[1.68, 0.14, 2.76]} scale={[1, 0.1, 1]} radius={0.06} smoothness={4} position={[0, -0.015, -0.23]} receiveShadow>
-        <meshStandardMaterial color="#415e65" roughness={1} />
-      </RoundedBox>
-      <mesh geometry={torso.geometry} castShadow receiveShadow>
-        <meshStandardMaterial color={SILICONE} roughness={0.62} metalness={0.015} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.0245, -0.23]} receiveShadow>
+        <planeGeometry args={[1.68, 2.76]} />
+        <meshStandardMaterial color="#3b5a63" roughness={0.88} bumpMap={matBump} bumpScale={1.2} />
       </mesh>
-      <mesh position={[0, 0.3, -0.63]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+      <mesh geometry={torso.geometry} material={materials.skin} castShadow receiveShadow />
+      <mesh position={[0, 0.3, -0.63]} rotation={[Math.PI / 2, 0, 0]} material={materials.skin} castShadow>
         <capsuleGeometry args={[0.145, 0.16, 10, 24]} />
-        <meshStandardMaterial color={SILICONE} roughness={0.65} />
       </mesh>
-      <mesh position={[0, 0.3, -1.01]} scale={[0.245, 0.235, 0.33]} castShadow receiveShadow>
-        <sphereGeometry args={[1, 48, 32]} />
-        <meshStandardMaterial color={SILICONE} roughness={0.62} />
-      </mesh>
-      <mesh position={[0, 0.325, -0.81]} scale={[0.18, 0.18, 0.18]} castShadow>
+      {/* Moulded manikin head resting face-up: head +z (face) → world +y, crown → world −z. */}
+      <group position={[0, 0.268, -1.03]} rotation={[-Math.PI / 2 - 0.12, 0, 0]} scale={2.6}>
+        <Head materials={materials} hairStyle="none" manikin />
+      </group>
+      <mesh position={[0, 0.3, -0.8]} scale={[0.17, 0.16, 0.17]} material={materials.skin} castShadow>
         <sphereGeometry args={[1, 32, 24]} />
-        <meshStandardMaterial color={SILICONE} roughness={0.62} />
-      </mesh>
-      <mesh position={[0, 0.533, -0.99]} scale={[0.04, 0.064, 0.07]} castShadow>
-        <sphereGeometry args={[1, 24, 18]} />
-        <meshStandardMaterial color={SILICONE} roughness={0.65} />
-      </mesh>
-      {[-1, 1].map(side => (
-        <group key={side}>
-          <mesh position={[side * 0.241, 0.31, -1.005]} scale={[0.043, 0.058, 0.083]} castShadow>
-            <sphereGeometry args={[1, 24, 18]} />
-            <meshStandardMaterial color={SILICONE} roughness={0.7} />
-          </mesh>
-          <mesh position={[side * 0.088, 0.515, -1.095]} rotation={[-0.23, 0, side * 0.03]} scale={[0.057, 0.007, 0.012]}>
-            <sphereGeometry args={[1, 20, 12]} />
-            <meshStandardMaterial color="#997663" roughness={0.9} />
-          </mesh>
-          <mesh position={[side * 0.037, 0.503, -0.937]} scale={[0.012, 0.003, 0.01]}>
-            <sphereGeometry args={[1, 12, 8]} />
-            <meshStandardMaterial color="#a17c65" roughness={1} />
-          </mesh>
-        </group>
-      ))}
-      <mesh position={[0, 0.496, -0.866]} rotation={[0.28, 0, 0]} scale={[0.063, 0.006, 0.014]}>
-        <sphereGeometry args={[1, 24, 14]} />
-        <meshStandardMaterial color="#a17c65" roughness={1} />
       </mesh>
       <group ref={contactRef} position={[0, TARGET_HEIGHT, 0.08]}>
         {currentStep >= 1 && (
@@ -178,7 +155,7 @@ export default function TrainingMannequin({
             )}
           </group>
         )}
-        {handsPlaced && <group position={[0, 0.037, 0]}><Hand /><Hand upper /></group>}
+        {handsPlaced && <group position={[0, 0.034, 0]}><GlovedHands glove={glove} /></group>}
         {currentStep >= 1 && !disabled && (
           <mesh
             position={[0, handsPlaced ? 0.09 : 0.025, 0]}
@@ -189,9 +166,9 @@ export default function TrainingMannequin({
           </mesh>
         )}
       </group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.136, 0]} receiveShadow>
-        <planeGeometry args={[200, 200]} />
-        <meshStandardMaterial color="#e9eeeb" roughness={1} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.126, 0]} receiveShadow>
+        <planeGeometry args={[40, 40]} />
+        <meshStandardMaterial map={floor} roughness={0.5} />
       </mesh>
     </group>
   )
