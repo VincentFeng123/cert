@@ -1,6 +1,7 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
+import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsType } from 'three-stdlib'
 import { createPortal } from 'react-dom'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
@@ -8,6 +9,8 @@ import { faArrowRight, faCheck, faCompress, faExpand, faLayerGroup, faPause, faP
 import HeimlichScene from './HeimlichScene'
 import GunViolenceScene from './GunViolenceScene'
 import DomesticViolenceScene from './DomesticViolenceScene'
+import StudioLighting from '../three/StudioLighting'
+import SceneReveal from '../three/SceneReveal'
 import type { PracticeDefinition } from '../../lib/practice-types'
 import { performPracticeAction, practiceIsComplete, restorePracticeActions, type PracticeActions } from '../../lib/practice-progress'
 import './practice.css'
@@ -181,11 +184,11 @@ export default function PracticeStudio({ definition, savedActions, onActionsChan
     </div></div>
     {fullscreen && definition.slug === 'domestic-violence' && <a className="practice-quick-exit" href="https://www.google.com" onClick={event => { event.preventDefault(); window.location.replace('https://www.google.com') }}>Quick exit ↗ <span>Does not clear history</span></a>}
     <div className="practice-viewport" data-testid={`${definition.slug}-3d-scene`}>
-      {webglFailed ? fallback : <SceneBoundary fallback={fallback}><Canvas shadows frameloop="demand" dpr={[1, 1.5]} camera={{ position: [5, 4.5, 6], fov: 45 }} gl={{ antialias: true, alpha: false }} aria-label={`${definition.title} 3D scene`}>
-        <color attach="background" args={['#e9eeee']} /><ambientLight intensity={1.2} /><hemisphereLight args={['#f5faf9', '#81928e', 1.6]} />
-        <directionalLight position={[3, 7, 5]} intensity={2.5} castShadow shadow-mapSize={[1024, 1024]} shadow-camera-left={-5} shadow-camera-right={5} shadow-camera-top={5} shadow-camera-bottom={-5} shadow-normalBias={0.04} />
+      {webglFailed ? fallback : <SceneBoundary fallback={fallback}><Canvas shadows frameloop="demand" dpr={[1, 1.75]} camera={{ position: [5, 4.5, 6], fov: 45 }} gl={{ antialias: true, alpha: false, toneMapping: THREE.AgXToneMapping, toneMappingExposure: 1.05 }} aria-label={`${definition.title} 3D scene`}>
+        <color attach="background" args={['#e7ecec']} /><fog attach="fog" args={['#e7ecec', 14, 30]} />
+        <StudioLighting />
         <SceneCamera overhead={overhead} resetKey={resetKey} onLost={() => setWebglFailed(true)} closeView={definition.slug === 'heimlich'} />
-        <Scene stepId={step.id} actionCount={count} completed={completed} motionEnabled={!paused && !reducedMotion && visible} activeTargetIds={completed || busy || summary ? [] : step.targets.map(target => target.id)} onTarget={activate} />
+        <SceneReveal><Scene stepId={step.id} actionCount={count} completed={completed} motionEnabled={!paused && !reducedMotion && visible} activeTargetIds={completed || busy || summary ? [] : step.targets.map(target => target.id)} onTarget={activate} /></SceneReveal>
       </Canvas></SceneBoundary>}
     </div>
     <div className="practice-scene-caption"><span>{webglFailed ? 'Use the action buttons to rehearse each step' : 'Drag to orbit · Scroll or pinch to zoom'}</span><span>{reducedMotion || paused ? 'Reduced motion' : 'Choose a marker or action below'}</span></div>
